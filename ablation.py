@@ -15,7 +15,7 @@ if __name__ == "__main__":
     # Load dataset as Numpy arrays
     X_tr, Y_tr, X_val, Y_val, X_te, Y_te = get_dataset(args.dataset, args.data_dir)
     # Load data handler
-    handler = get_handler(args.data)
+    handler = get_handler(args.dataset)
 
     # Initial labelled pool, Randomly select nStart indices to label
     labelled_mask = np.zeros(len(X_tr), dtype=bool)
