@@ -1,47 +1,6 @@
-import numpy as np
-from torch.utils.data import DataLoader
 from .strategy import Strategy
-import pickle
-from scipy.spatial.distance import cosine
-import sys
-import gc
-from scipy.linalg import det
-from scipy.linalg import pinv as inv
-from copy import copy as copy
-from copy import deepcopy as deepcopy
-import torch
-from torch import nn
-import torchfile
-from torch.autograd import Variable
-import resnet
-import vgg
-import torch.optim as optim
-import pdb
-from torch.nn import functional as F
-import argparse
-import torch.nn as nn
-from collections import OrderedDict
 from scipy import stats
 import numpy as np
-import scipy.sparse as sp
-from itertools import product
-from sklearn.base import BaseEstimator, ClusterMixin, TransformerMixin
-from sklearn.metrics.pairwise import euclidean_distances
-from sklearn.metrics.pairwise import pairwise_distances_argmin_min
-from sklearn.utils.extmath import row_norms, squared_norm, stable_cumsum
-from sklearn.utils.sparsefuncs_fast import assign_rows_csr
-from sklearn.utils.sparsefuncs import mean_variance_axis
-from sklearn.utils.validation import _num_samples
-from sklearn.utils import check_array
-from sklearn.utils import gen_batches
-from sklearn.utils import check_random_state
-from sklearn.utils.validation import check_is_fitted
-from sklearn.utils.validation import FLOAT_DTYPES
-from sklearn.metrics.pairwise import rbf_kernel as rbf
-#from sklearn.externals.six import string_types
-from sklearn.exceptions import ConvergenceWarning
-from sklearn.metrics import pairwise_distances
-
 
 def distance(X1, X2, mu):
     Y1, Y2 = mu
@@ -78,18 +37,18 @@ def init_centers(X1, X2, chosen, chosen_list,  mu, D2):
 
 
 class BadgeSampling(Strategy):
-    def __init__(self, X, Y, idxs_lb, net, handler, args):
-        super(BadgeSampling, self).__init__(X, Y, idxs_lb, net, handler, args)
+    def __init__(self, X, Y, labelled_mask, handler, args):
+        super(BadgeSampling, self).__init__(X, Y, labelled_mask, handler, args)
 
     def query(self, n):
-        idxs_unlabeled = np.arange(self.n_pool)[~self.idxs_lb]
-        embs, probs = self.get_embedding(self.X[idxs_unlabeled], self.Y.numpy()[idxs_unlabeled], return_probs=True)
+        idxs_unlabeled = np.arange(self.n_pool)[~self.labelled_mask]
+        embs, probs = self.get_embedding(self.X[idxs_unlabeled], self.Y[idxs_unlabeled], return_probs=True)
         embs = embs.numpy()
         probs = probs.numpy()
 
         # the logic below reflects a speedup proposed by Zhang et al.
         # see Appendix D of https://arxiv.org/abs/2306.09910 for more details
-        m = (~self.idxs_lb).sum()
+        m = (~self.labelled_mask).sum()
         mu = None
         D2 = None
         chosen = set()

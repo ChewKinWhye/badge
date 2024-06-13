@@ -6,12 +6,26 @@ Reference:
 [1] Kaiming He, Xiangyu Zhang, Shaoqing Ren, Jian Sun
     Deep Residual Learning for Image Recognition. arXiv:1512.03385
 '''
+'''VGG11/13/16/19 in Pytorch.'''
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import pdb
 from torch.autograd import Variable
 
+
+def get_model(model):
+    if model == 'resnet18':
+        net = ResNet18()
+    elif model == 'resnet50':
+        net = ResNet50()
+    elif model == 'vgg':
+        net = VGG('VGG16')
+    else:
+        print('choose a valid model - mlp, resnet, or vgg', flush=True)
+        raise ValueError
+    return net
 
 class BasicBlock(nn.Module):
     expansion = 1
@@ -116,9 +130,39 @@ def ResNet152():
     return ResNet(Bottleneck, [3,8,36,3])
 
 
-def test():
-    net = ResNet18()
-    y = net(Variable(torch.randn(1,3,32,32)))
-    print(y.size())
+cfg = {
+    'VGG11': [64, 'M', 128, 'M', 256, 256, 'M', 512, 512, 'M', 512, 512, 'M'],
+    'VGG13': [64, 64, 'M', 128, 128, 'M', 256, 256, 'M', 512, 512, 'M', 512, 512, 'M'],
+    'VGG16': [64, 64, 'M', 128, 128, 'M', 256, 256, 256, 'M', 512, 512, 512, 'M', 512, 512, 512, 'M'],
+    'VGG19': [64, 64, 'M', 128, 128, 'M', 256, 256, 256, 256, 'M', 512, 512, 512, 512, 'M', 512, 512, 512, 512, 'M'],
+}
 
-# test()
+
+class VGG(nn.Module):
+    def __init__(self, vgg_name):
+        super(VGG, self).__init__()
+        self.features = self._make_layers(cfg[vgg_name])
+        self.classifier = nn.Linear(512, 10)
+
+    def forward(self, x):
+        out = self.features(x)
+        emb = out.view(out.size(0), -1)
+        out = self.classifier(emb)
+        return out, emb
+
+    def _make_layers(self, cfg):
+        layers = []
+        in_channels = 3
+        for x in cfg:
+            if x == 'M':
+                layers += [nn.MaxPool2d(kernel_size=2, stride=2)]
+            else:
+                layers += [nn.Conv2d(in_channels, x, kernel_size=3, padding=1),
+                           nn.BatchNorm2d(x),
+                           nn.ReLU(inplace=True)]
+                in_channels = x
+        layers += [nn.AvgPool2d(kernel_size=1, stride=1)]
+        return nn.Sequential(*layers)
+
+    def get_embedding_dim(self):
+        return 512

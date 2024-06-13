@@ -1,6 +1,5 @@
 import numpy as np
 from .strategy import Strategy
-from .random_sampling import RandomSampling
 
 class ActiveLearningByLearning(Strategy):
 	def __init__(self, X, Y, idxs_lb, net, handler, args, strategy_list, delta = 0.1):
