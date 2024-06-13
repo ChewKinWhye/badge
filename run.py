@@ -13,7 +13,7 @@ if __name__ == "__main__":
     os.makedirs(args.save_dir, exist_ok=True)
 
     # Load dataset as Numpy arrays
-    X_tr, Y_tr, X_val, Y_val, X_te, Y_te = get_dataset(args.dataset, args.path)
+    X_tr, Y_tr, X_val, Y_val, X_te, Y_te = get_dataset(args.dataset, args.data_dir)
     # Load data handler
     handler = get_handler(args.data)
 
