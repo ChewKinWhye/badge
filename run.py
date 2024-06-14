@@ -1,6 +1,6 @@
 from query_strategies import RandomSampling, BadgeSampling, LeastConfidence, MarginSampling, EntropySampling, CoreSet
 from utils.dataset import get_dataset, get_handler
-from utils.utils import parse_args
+from utils.utils import parse_args, set_seed
 
 import numpy as np
 import torch
@@ -11,6 +11,7 @@ if __name__ == "__main__":
     # Parse args
     args = parse_args()
     os.makedirs(args.save_dir, exist_ok=True)
+    set_seed(args.seed)
 
     # Load dataset as Numpy arrays
     X_tr, Y_tr, X_val, Y_val, X_te, Y_te = get_dataset(args.dataset, args.data_dir)
@@ -53,8 +54,17 @@ if __name__ == "__main__":
         labelled_mask[query_idxs] = True
         strategy.update(labelled_mask)
 
-        # Round Train and Test
-        strategy.train(X_val, Y_val, verbose=False)
+        # After Query, what can we do to gain additional information
+        # We can start be defining information based on a better performing model
+        # Retrain the classification head using the actively queried datapoints
+        if args.retrain_type == "head":
+            strategy.retrain(X_tr[query_idxs], Y_tr[query_idxs], X_val, Y_val)
+        elif args.retrain_type == "scale":
+            strategy.retrain_scale(X_tr[query_idxs], Y_tr[query_idxs], X_val, Y_val)
+        print(f"Accuracy after retraining: {strategy.evaluate(X_te, Y_te)}")
+
+        # Next Round: Train (with inductive bias) and Test
+        strategy.train(X_val, Y_val, teacher_model=strategy.clf, verbose=False)
         acc[rd] = strategy.evaluate(X_te, Y_te)
 
         # Print and Clean up

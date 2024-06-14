@@ -23,8 +23,16 @@ class Strategy:
 
     def update(self, labelled_mask):
         self.labelled_mask = labelled_mask
- 
-    def train(self, X_val, Y_val, verbose=True):
+
+    def compute_teacher_loss(self, student_logits, teacher_model, temp):
+        teacher_model.eval()
+        with torch.no_grad():
+            teacher_logits = torch.nn.functional.softmax(teacher_model(x) / temp, dim=-1)
+        student_logits = torch.nn.functional.log_softmax(student_logits / temp, dim=-1)
+        logit_loss = -torch.sum(teacher_logits * student_logits) / student_logits.size()[0] * (temp ** 2)
+        return logit_loss
+
+    def train(self, X_val, Y_val, teacher_model=None, verbose=True, temp=1):
         # Initialize model and optimizer
         self.clf = get_model(self.args.model).cuda()
         optimizer = optim.Adam(self.clf.parameters(), lr=self.args.lr, weight_decay=self.args.weight_decay)
@@ -45,6 +53,9 @@ class Strategy:
                 optimizer.zero_grad()
                 out, _ = self.clf(x)
                 loss = F.cross_entropy(out, y)
+                if self.args.inductive_bias and teacher_model is not None:
+                    teacher_loss = self.compute_teacher_loss(out, teacher_model, temp)
+                    loss = (1-self.args.bias_weight) * loss + self.args.bias_weight * teacher_loss
                 # Backward Pass
                 loss.backward()
                 # Update
@@ -65,7 +76,6 @@ class Strategy:
         if verbose:
             print(f"Loading model with highest validation accuracy of {best_val_acc:.4f} at epoch {best_epoch}")
         self.clf.load_state_dict(torch.load(os.path.join(self.args.save_dir, "best_model.pth")))
-
 
     def retrain(self, X_query, Y_query, X_val, Y_val):
         # Extract Embeddings
@@ -126,6 +136,7 @@ class Strategy:
                 best_scale_weights = scale_weights
         with torch.no_grad():
             self.clf.linear.weight.copy_((self.clf.linear.weight.T * best_scale_weights).T)
+        self.clf.cuda()
 
     def evaluate(self, X, Y):
         Y = torch.Tensor(Y)
