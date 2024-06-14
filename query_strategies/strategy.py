@@ -26,7 +26,7 @@ class Strategy:
  
     def train(self, X_val, Y_val, verbose=True):
         # Initialize model and optimizer
-        self.clf = get_model(self.args.model)
+        self.clf = get_model(self.args.model).cuda()
         optimizer = optim.Adam(self.clf.parameters(), lr=self.args.lr, weight_decay=self.args.weight_decay)
 
         # Obtain train and validation dataset and loader
@@ -86,15 +86,16 @@ class Strategy:
 
         # Train logistic regression with best c value found
         cls_head = LogisticRegression(penalty="l1", C=best_c_value, solver="liblinear")
-        cls_head.fit(X_query, Y_query)
+        cls_head.fit(query_emb, Y_query)
 
         # Update model with retrained classification head
         with torch.no_grad():
-            self.clf.fc.weight.copy_(torch.from_numpy(cls_head.coef_).float())
-            self.clf.fc.bias.copy_(torch.from_numpy(cls_head.intercept_).float())
+            self.clf.linear.weight.copy_(torch.from_numpy(cls_head.coef_).float())
+            self.clf.linear.bias.copy_(torch.from_numpy(cls_head.intercept_).float())
         self.clf.cuda()
 
     def evaluate(self, X, Y):
+        Y = torch.Tensor(Y)
         P = self.predict(X, Y)
         accuracy = 1.0 * (Y == P).sum().item() / len(Y)
         return accuracy
