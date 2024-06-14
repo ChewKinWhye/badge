@@ -41,7 +41,10 @@ if __name__ == "__main__":
         # After Query, what can we do to gain additional information
         # We can start be defining information based on a better performing model
         # Retrain the classification head using the actively queried datapoints
-        strategy.retrain(X_tr[query_idxs], Y_tr[query_idxs], X_val, Y_val)
+        if args.retrain_type == "head":
+            strategy.retrain(X_tr[query_idxs], Y_tr[query_idxs], X_val, Y_val)
+        elif args.retrain_type == "scale":
+            strategy.retrain_scale(X_tr[query_idxs], Y_tr[query_idxs], X_val, Y_val)
         print(f"Accuracy after retraining: {strategy.evaluate(X_te, Y_te)}")
         # Then, this better performing model can be exploited to create an inductive bias
         # Round Train and Test

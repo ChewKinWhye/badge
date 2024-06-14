@@ -94,6 +94,39 @@ class Strategy:
             self.clf.linear.bias.copy_(torch.from_numpy(cls_head.intercept_).float())
         self.clf.cuda()
 
+    def retrain_scale(self, X_query, Y_query, X_val, Y_val):
+        # Extract Embeddings
+        query_emb = self.get_embedding(X_query, Y_query) # N, d
+        val_emb = self.get_embedding(X_val, Y_val)
+
+        # Select best weight decay value to use
+        weight_decays = [1e-4, 1e-3, 1e-2, 1e-1]
+        best_val_acc, best_scale_weights = 0, None
+
+        for weight_decay in weight_decays:
+            # Initialize scaling weights
+            scale_weights = torch.randn(X_query.size()[1], requires_grad=True)  # d
+            optimizer = optim.Adam([scale_weights], lr=0.01, weight_decay=weight_decay)
+            # Train scaling weights
+            for epoch in range(50):
+                optimizer.zero_grad()
+                # Scale features with weights
+                weighted_features = query_emb * scale_weights
+                # Obtain output
+                logits = self.clf.linear(weighted_features)
+                # Compute Loss
+                loss = torch.nn.CrossEntropyLoss()(logits, Y_query)
+                # Backpropagation
+                loss.backward()
+                optimizer.step()
+            # Evaluate
+            preds_val = self.clf.linear(val_emb * scale_weights)
+            val_acc = (preds_val == Y_val).sum().item() / len(Y_val)
+            if val_acc > best_val_acc:
+                best_scale_weights = scale_weights
+        with torch.no_grad():
+            self.clf.linear.weight.copy_((self.clf.linear.weight.T * best_scale_weights).T)
+
     def evaluate(self, X, Y):
         Y = torch.Tensor(Y)
         P = self.predict(X, Y)

@@ -18,6 +18,8 @@ def parse_args():
     parser.add_argument('--nQuery', help='number of points to query in a batch', type=int, default=100)
     parser.add_argument('--nStart', help='number of points to start', type=int, default=1000)
     parser.add_argument('--nEnd', help='total number of points to query', type=int, default=50000)
+    # Method Args
+    parser.add_argument('--retrain_type', help='retrain the entire classification head or only the scale of the features: [head, scale]', type=str, default='any')
 
     # Save Directory
     parser.add_argument('--save_dir', help='Directory to save trained models', type=str, default='logs')
