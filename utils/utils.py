@@ -13,8 +13,8 @@ def parse_args():
     parser.add_argument('--architecture', help='model - resnet18, resnet50', type=str, default='resnet18')
     parser.add_argument("--pretrained", type=int, default=0, help="Use pretrained model")
     # Data Args
-    parser.add_argument('--data_dir', help='data path', type=str, default='/home/e/e0200920/data')
-    parser.add_argument('--dataset', help='dataset, mcdominoes, spawrious, spuco, treeperson', type=str, default='')
+    parser.add_argument('--data_dir', help='data path', type=str, default='/hpctmp/e0200920')
+    parser.add_argument('--dataset', help='dataset, mcdominoes, spawrious, spuco, treeperson', type=str, default='mcdominoes')
     parser.add_argument("--spurious_strength", type=float, default=0.95, help="Strength of spurious correlation")
     # Training Args
     parser.add_argument('--lr', help='learning rate', type=float, default=1e-4)

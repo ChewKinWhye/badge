@@ -1,6 +1,6 @@
 from torch.utils.data import DataLoader
 from torch.autograd import Variable
-from utils.utils import AverageMeter, update_meter, evaluate_model, load_model, get_output
+from utils.utils import AverageMeter, update_meter, load_model, get_output
 import time
 import tqdm
 
@@ -34,10 +34,10 @@ class Strategy:
         optimizer = optim.Adam(self.clf.parameters(), lr=self.args.lr, weight_decay=self.args.weight_decay)
 
         # Obtain train and validation dataset and loader
-        idxs_train = np.arange(self.n_pool)[self.labelled_mask]
-        loader_tr = DataLoader(self.handler(self.X[idxs_train], torch.Tensor(self.Y[idxs_train]).long(), torch.Tensor(self.P[idxs_train]).long(), is_train=True),
+        idxs_train = np.arange(self.n_pool)[self.labelled_mask].astype(int)
+        loader_tr = DataLoader(self.handler([self.X[i] for i in idxs_train], torch.Tensor(self.Y[idxs_train]).long(), torch.Tensor(self.P[idxs_train]).long(), isTrain=True),
                                shuffle=True, batch_size=self.args.batch_size)
-        loader_val = DataLoader(self.handler(X_val, torch.Tensor(Y_val).long(), torch.Tensor(P_val).long(), is_train=False),
+        loader_val = DataLoader(self.handler(X_val, torch.Tensor(Y_val).long(), torch.Tensor(P_val).long(), isTrain=False),
                                shuffle=False, batch_size=self.args.batch_size)
 
         criterion = torch.nn.CrossEntropyLoss()
@@ -72,7 +72,7 @@ class Strategy:
             val_minority_acc, val_majority_acc, val_avg_acc = self.evaluate_model(loader_val)
             # Save best model based on worst group accuracy
             if val_avg_acc > best_val_avg_acc:
-                torch.save(self.clf.state_dict(), os.path.join(self.args.output_dir, "ckpt.pt"))
+                torch.save(self.clf.state_dict(), os.path.join(self.args.save_dir, "ckpt.pt"))
                 best_val_avg_acc = val_avg_acc
                 best_epoch = epoch
             # Print stats
@@ -93,7 +93,7 @@ class Strategy:
 
         with torch.no_grad():
             for x, y, p, idxs in tqdm.tqdm(loader, disable=True):
-                x, y, p = x.cudsa(), y.cuda(), p.cuda()
+                x, y, p = x.cuda(), y.cuda(), p.cuda()
                 logits = self.clf(x)
                 avg_acc, minority_acc, majority_acc = update_meter(avg_acc, minority_acc, majority_acc, logits, y, p)
 
@@ -102,7 +102,7 @@ class Strategy:
 
     def predict(self, X, Y):
         self.clf.eval()
-        data_loader = DataLoader(self.handler(X, torch.Tensor(Y).long(), is_train=False),
+        data_loader = DataLoader(self.handler(X, torch.Tensor(Y).long(), isTrain=False),
                                shuffle=False, batch_size=self.args.batch_size)
 
         P = torch.zeros(len(Y)).long()
@@ -116,7 +116,7 @@ class Strategy:
 
     def predict_output(self, X, Y):
         self.clf.eval()
-        data_loader = DataLoader(self.handler(X, torch.Tensor(Y).long(), is_train=False),
+        data_loader = DataLoader(self.handler(X, torch.Tensor(Y).long(), isTrain=False),
                                  shuffle=False, batch_size=self.args.batch_size)
         probs = torch.zeros([len(Y), len(np.unique(self.Y))])
         embedding = torch.zeros([len(Y), 512])

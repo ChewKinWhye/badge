@@ -40,7 +40,7 @@ if __name__ == "__main__":
     # Stats
     NUM_ROUNDS = (args.nEnd - args.nStart) // args.nQuery
     test_average_acc, test_minority_acc, test_majority_acc = np.zeros(NUM_ROUNDS+1), np.zeros(NUM_ROUNDS+1), np.zeros(NUM_ROUNDS+1)
-    loader_test = DataLoader(handler(X_te, torch.Tensor(Y_te).long(), torch.Tensor(P_te).long(), is_train=False),
+    loader_test = DataLoader(handler(X_te, torch.Tensor(Y_te).long(), torch.Tensor(P_te).long(), isTrain=False),
                             shuffle=False, batch_size=args.batch_size)
 
     # Round 0 Train and Test

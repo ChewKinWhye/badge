@@ -3,7 +3,7 @@ import numpy as np
 
 class MarginSampling(Strategy):
     def __init__(self, X, Y, P, labelled_mask, handler, num_classes, num_epochs, args):
-        super(MarginSampling, self).__init__(X, Y, P, labelled_mask, handler, args)
+        super(MarginSampling, self).__init__(X, Y, P, labelled_mask, handler, num_classes, num_epochs, args)
 
     def query(self, n):
         idxs_unlabeled = np.arange(self.n_pool)[~self.labelled_mask]
