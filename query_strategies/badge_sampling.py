@@ -37,12 +37,12 @@ def init_centers(X1, X2, chosen, chosen_list,  mu, D2):
 
 
 class BadgeSampling(Strategy):
-    def __init__(self, X, Y, labelled_mask, handler, args):
-        super(BadgeSampling, self).__init__(X, Y, labelled_mask, handler, args)
+    def __init__(self, X, Y, P, labelled_mask, handler, num_classes, num_epochs, args):
+        super(BadgeSampling, self).__init__(X, Y, P, labelled_mask, handler, args)
 
     def query(self, n):
         idxs_unlabeled = np.arange(self.n_pool)[~self.labelled_mask]
-        embs, probs = self.get_embedding(self.X[idxs_unlabeled], self.Y[idxs_unlabeled], return_probs=True)
+        probs, embs = self.predict_output(self.X[idxs_unlabeled], self.Y[idxs_unlabeled])
         embs = embs.numpy()
         probs = probs.numpy()
 

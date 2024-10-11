@@ -3,8 +3,8 @@ from .strategy import Strategy
 import numpy as np
 
 class CoreSet(Strategy):
-    def __init__(self, X, Y, labelled_mask, handler, args, tor=1e-4):
-        super(CoreSet, self).__init__(X, Y, labelled_mask, handler, args)
+    def __init__(self, X, Y, P, labelled_mask, handler, num_classes, num_epochs, args, tor=1e-4):
+        super(CoreSet, self).__init__(X, Y, P, labelled_mask, handler, args)
         self.tor = tor
 
     def furthest_first(self, X, X_set, n):
@@ -29,7 +29,7 @@ class CoreSet(Strategy):
     def query(self, n):
         idxs_unlabeled = np.arange(self.n_pool)[~self.labelled_mask]
         lb_flag = self.labelled_mask.copy()
-        embedding = self.get_embedding(self.X, self.Y)
+        _, embedding = self.predict_output(self.X, self.Y)
         embedding = embedding.numpy()
 
         chosen = self.furthest_first(embedding[idxs_unlabeled, :], embedding[lb_flag, :], n)

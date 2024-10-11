@@ -15,13 +15,13 @@ import pdb
 from torch.autograd import Variable
 
 
-def get_model(model):
+def get_model(model, num_classes):
     if model == 'resnet18':
-        net = ResNet18()
+        net = ResNet18(num_classes)
     elif model == 'resnet50':
-        net = ResNet50()
+        net = ResNet50(num_classes)
     elif model == 'vgg':
-        net = VGG('VGG16')
+        net = VGG('VGG16', num_classes)
     else:
         print('choose a valid model - mlp, resnet, or vgg', flush=True)
         raise ValueError
@@ -81,7 +81,7 @@ class Bottleneck(nn.Module):
 
 
 class ResNet(nn.Module):
-    def __init__(self, block, num_blocks, num_classes=10):
+    def __init__(self, block, num_blocks, num_classes):
         super(ResNet, self).__init__()
         self.in_planes = 16
         self.embDim = 128 * block.expansion
@@ -114,20 +114,20 @@ class ResNet(nn.Module):
         return self.embDim
 
 
-def ResNet18():
-    return ResNet(BasicBlock, [2,2,2,2])
+def ResNet18(num_classes):
+    return ResNet(BasicBlock, [2,2,2,2], num_classes)
 
-def ResNet34():
-    return ResNet(BasicBlock, [3,4,6,3])
+def ResNet34(num_classes):
+    return ResNet(BasicBlock, [3,4,6,3], num_classes)
 
-def ResNet50():
-    return ResNet(Bottleneck, [3,4,6,3])
+def ResNet50(num_classes):
+    return ResNet(Bottleneck, [3,4,6,3], num_classes)
 
-def ResNet101():
-    return ResNet(Bottleneck, [3,4,23,3])
+def ResNet101(num_classes):
+    return ResNet(Bottleneck, [3,4,23,3], num_classes)
 
-def ResNet152():
-    return ResNet(Bottleneck, [3,8,36,3])
+def ResNet152(num_classes):
+    return ResNet(Bottleneck, [3,8,36,3], num_classes)
 
 
 cfg = {
@@ -139,10 +139,10 @@ cfg = {
 
 
 class VGG(nn.Module):
-    def __init__(self, vgg_name):
+    def __init__(self, vgg_name, num_classes):
         super(VGG, self).__init__()
         self.features = self._make_layers(cfg[vgg_name])
-        self.classifier = nn.Linear(512, 10)
+        self.classifier = nn.Linear(512, num_classes)
 
     def forward(self, x):
         out = self.features(x)

@@ -1,7 +1,8 @@
-from sklearn.linear_model import LogisticRegression
 from torch.utils.data import DataLoader
 from torch.autograd import Variable
-from utils.model import get_model
+from utils.utils import AverageMeter, update_meter, evaluate_model, load_model, get_output
+import time
+import tqdm
 
 import torch.nn.functional as F
 import torch.optim as optim
@@ -10,139 +11,94 @@ import torch
 import os
 
 class Strategy:
-    def __init__(self, X, Y, labelled_mask, handler, args):
+    def __init__(self, X, Y, P, labelled_mask, handler, num_classes, num_epochs, args):
         self.X = X
         self.Y = Y
+        self.P = P
         self.labelled_mask = labelled_mask
         self.handler = handler
+        self.num_classes = num_classes
+        self.num_epochs = num_epochs
         self.args = args
         self.n_pool = len(Y)
-        self.clf = get_model(args.model)
+
     def query(self, n):
         pass
 
     def update(self, labelled_mask):
         self.labelled_mask = labelled_mask
 
-    def compute_teacher_loss(self, student_logits, teacher_model, temp):
-        teacher_model.eval()
-        with torch.no_grad():
-            teacher_logits = torch.nn.functional.softmax(teacher_model(x) / temp, dim=-1)
-        student_logits = torch.nn.functional.log_softmax(student_logits / temp, dim=-1)
-        logit_loss = -torch.sum(teacher_logits * student_logits) / student_logits.size()[0] * (temp ** 2)
-        return logit_loss
-
-    def train(self, X_val, Y_val, teacher_model=None, verbose=True, temp=1):
+    def train(self, X_val, Y_val, P_val, verbose=True):
         # Initialize model and optimizer
-        self.clf = get_model(self.args.model).cuda()
+        self.clf = load_model(self.args.pretrained, self.args.architecture, self.num_classes).cuda()
         optimizer = optim.Adam(self.clf.parameters(), lr=self.args.lr, weight_decay=self.args.weight_decay)
 
         # Obtain train and validation dataset and loader
         idxs_train = np.arange(self.n_pool)[self.labelled_mask]
-        loader_tr = DataLoader(self.handler(self.X[idxs_train], torch.Tensor(self.Y[idxs_train]).long(), is_train=True),
+        loader_tr = DataLoader(self.handler(self.X[idxs_train], torch.Tensor(self.Y[idxs_train]).long(), torch.Tensor(self.P[idxs_train]).long(), is_train=True),
                                shuffle=True, batch_size=self.args.batch_size)
+        loader_val = DataLoader(self.handler(X_val, torch.Tensor(Y_val).long(), torch.Tensor(P_val).long(), is_train=False),
+                               shuffle=False, batch_size=self.args.batch_size)
 
-        best_epoch, best_val_acc = 0, 0
-        for epoch in range(self.args.num_epochs):
-            # Train
-            train_acc, train_loss = 0, 0
+        criterion = torch.nn.CrossEntropyLoss()
+
+        # --- Train Start ---
+        best_val_avg_acc, best_epoch = -1, None
+        for epoch in range(self.num_epochs):
             self.clf.train()
-            for x, y, idxs in loader_tr:
-                # Forward Pass
-                x, y = Variable(x.cuda()), Variable(y.cuda())
+            # Track metrics
+            ce_loss_meter, train_minority_acc, train_majority_acc, train_avg_acc = AverageMeter(), AverageMeter(), \
+                                                                                   AverageMeter(), AverageMeter()
+            start = time.time()
+            for batch in tqdm.tqdm(loader_tr, disable=True):
+                x, y, p, idxs = batch
+                x, y, p, idxs = x.cuda(), y.cuda(), p.cuda(), idxs.cuda()
                 optimizer.zero_grad()
-                out, _ = self.clf(x)
-                loss = F.cross_entropy(out, y)
-                if self.args.inductive_bias and teacher_model is not None:
-                    teacher_loss = self.compute_teacher_loss(out, teacher_model, temp)
-                    loss = (1-self.args.bias_weight) * loss + self.args.bias_weight * teacher_loss
-                # Backward Pass
+
+                # Cross Entropy Loss
+                logits = self.clf(x)
+                loss = criterion(logits, y)
+
                 loss.backward()
-                # Update
-                for p in filter(lambda p: p.grad is not None, self.clf.parameters()): p.grad.data.clamp_(min=-.1, max=.1)
                 optimizer.step()
-                # Logging
-                train_acc += torch.sum((torch.max(out, 1)[1] == y).float()).data.item() / len(loader_tr.dataset)
-                train_loss += loss.detach().item() / len(loader_tr)
+
+                # Monitor training stats
+                ce_loss_meter.update(torch.mean(loss).detach().item(), x.size(0))
+                train_avg_acc, train_minority_acc, train_majority_acc = update_meter(train_avg_acc, train_minority_acc,
+                                                                                     train_majority_acc,
+                                                                                     logits.detach(), y, p)
+
             self.clf.eval()
-            validation_acc = self.evaluate(X_val, Y_val)
-            if validation_acc > best_val_acc:
-                best_val_acc = validation_acc
+            val_minority_acc, val_majority_acc, val_avg_acc = self.evaluate_model(loader_val)
+            # Save best model based on worst group accuracy
+            if val_avg_acc > best_val_avg_acc:
+                torch.save(self.clf.state_dict(), os.path.join(self.args.output_dir, "ckpt.pt"))
+                best_val_avg_acc = val_avg_acc
                 best_epoch = epoch
-                torch.save(self.clf.state_dict(), os.path.join(self.args.save_dir, "best_model.pth"))
-            # Print
+            # Print stats
             if verbose:
-                print(f"Epoch: {epoch}, Train Loss: {train_loss:.4f}, Train Acc: {train_acc:.4f}, Validation Acc: {validation_acc:.4f}")
-        if verbose:
-            print(f"Loading model with highest validation accuracy of {best_val_acc:.4f} at epoch {best_epoch}")
-        self.clf.load_state_dict(torch.load(os.path.join(self.args.save_dir, "best_model.pth")))
+                print(f"Epoch {epoch} Loss: {ce_loss_meter.avg:.3f} Time Taken: {time.time() - start:.3f}")
+                print(f"Train Average Accuracy: {train_avg_acc.avg:.3f} Train Majority Accuracy: {train_majority_acc.avg:.3f} "
+                    f"Train Minority Accuracy: {train_minority_acc.avg:.3f}")
+                print(f"Val Average Accuracy: {val_avg_acc:.3f} Val Majority Accuracy: {val_majority_acc:.3f} "
+                      f"Val Minority Accuracy: {val_minority_acc:.3f}")
+        # --- Train End ---
+        print(f'Best validation accuracy: {best_val_avg_acc:.3f} at epoch {best_epoch}')
+        state_dict = torch.load(os.path.join(self.args.save_dir, "ckpt.pt"))
+        return state_dict
 
-    def retrain(self, X_query, Y_query, X_val, Y_val):
-        # Extract Embeddings
-        query_emb = self.get_embedding(X_query, Y_query)
-        val_emb = self.get_embedding(X_val, Y_val)
+    def evaluate_model(self, loader):
+        self.clf.eval()
+        minority_acc, majority_acc, avg_acc = AverageMeter(), AverageMeter(), AverageMeter()
 
-        # Select best c value to be used for logistic regression
-        C_OPTIONS = [0.01, 0.05, 0.1, 0.5, 1, 1.5, 2.5, 5, 7.5, 10, 20, 50]
-        val_accuracies = []
-        for c in C_OPTIONS:
-            cls_head = LogisticRegression(penalty="l1", C=c, solver="liblinear")
-            cls_head.fit(query_emb, Y_query)
-            preds_val = cls_head.predict(val_emb)
-            val_accuracies.append((preds_val == Y_val).sum().item() / len(Y_val))
-        best_c_value = C_OPTIONS[np.argmax(val_accuracies)]
-        print(f"Validation Accuracies: {val_accuracies}")
-        print(f"Best C value chosen: {best_c_value}")
-
-        # Train logistic regression with best c value found
-        cls_head = LogisticRegression(penalty="l1", C=best_c_value, solver="liblinear")
-        cls_head.fit(query_emb, Y_query)
-
-        # Update model with retrained classification head
         with torch.no_grad():
-            self.clf.linear.weight.copy_(torch.from_numpy(cls_head.coef_).float())
-            self.clf.linear.bias.copy_(torch.from_numpy(cls_head.intercept_).float())
-        self.clf.cuda()
+            for x, y, p, idxs in tqdm.tqdm(loader, disable=True):
+                x, y, p = x.cudsa(), y.cuda(), p.cuda()
+                logits = self.clf(x)
+                avg_acc, minority_acc, majority_acc = update_meter(avg_acc, minority_acc, majority_acc, logits, y, p)
 
-    def retrain_scale(self, X_query, Y_query, X_val, Y_val):
-        # Extract Embeddings
-        query_emb = self.get_embedding(X_query, Y_query) # N, d
-        val_emb = self.get_embedding(X_val, Y_val)
-
-        # Select best weight decay value to use
-        weight_decays = [1e-4, 1e-3, 1e-2, 1e-1]
-        best_val_acc, best_scale_weights = 0, None
-
-        for weight_decay in weight_decays:
-            # Initialize scaling weights
-            scale_weights = torch.randn(X_query.size()[1], requires_grad=True)  # d
-            optimizer = optim.Adam([scale_weights], lr=0.01, weight_decay=weight_decay)
-            # Train scaling weights
-            for epoch in range(50):
-                optimizer.zero_grad()
-                # Scale features with weights
-                weighted_features = query_emb * scale_weights
-                # Obtain output
-                logits = self.clf.linear(weighted_features)
-                # Compute Loss
-                loss = torch.nn.CrossEntropyLoss()(logits, Y_query)
-                # Backpropagation
-                loss.backward()
-                optimizer.step()
-            # Evaluate
-            preds_val = self.clf.linear(val_emb * scale_weights)
-            val_acc = (preds_val == Y_val).sum().item() / len(Y_val)
-            if val_acc > best_val_acc:
-                best_scale_weights = scale_weights
-        with torch.no_grad():
-            self.clf.linear.weight.copy_((self.clf.linear.weight.T * best_scale_weights).T)
-        self.clf.cuda()
-
-    def evaluate(self, X, Y):
-        Y = torch.Tensor(Y)
-        P = self.predict(X, Y)
-        accuracy = 1.0 * (Y == P).sum().item() / len(Y)
-        return accuracy
+        self.clf.train()
+        return minority_acc.avg, majority_acc.avg, avg_acc.avg
 
     def predict(self, X, Y):
         self.clf.eval()
@@ -153,41 +109,23 @@ class Strategy:
         with torch.no_grad():
             for x, y, idxs in data_loader:
                 x, y = Variable(x.cuda()), Variable(y.cuda())
-                out, e1 = self.clf(x)
+                out = self.clf(x)
                 pred = out.max(1)[1]
                 P[idxs] = pred.data.cpu()
         return P
 
-
-    def predict_prob(self, X, Y):
+    def predict_output(self, X, Y):
         self.clf.eval()
         data_loader = DataLoader(self.handler(X, torch.Tensor(Y).long(), is_train=False),
-                               shuffle=False, batch_size=self.args.batch_size)
+                                 shuffle=False, batch_size=self.args.batch_size)
         probs = torch.zeros([len(Y), len(np.unique(self.Y))])
+        embedding = torch.zeros([len(Y), 512])
+
         with torch.no_grad():
             for x, y, idxs in data_loader:
                 x, y = Variable(x.cuda()), Variable(y.cuda())
-                out, e1 = self.clf(x)
-                out = F.softmax(out, dim=1)
-                probs[idxs] = out.cpu().data
-        
-        return probs
-
-
-    def get_embedding(self, X, Y, return_probs=False):
-        self.clf.eval()
-        data_loader = DataLoader(self.handler(X, torch.Tensor(Y).long(), is_train=False),
-                               shuffle=False, batch_size=self.args.batch_size)
-
-        embedding = torch.zeros([len(Y), self.clf.get_embedding_dim()])
-        probs = torch.zeros(len(Y), self.clf.linear.out_features)
-        with torch.no_grad():
-            for x, y, idxs in data_loader:
-                x, y = Variable(x.cuda()), Variable(y.cuda())
-                out, e1 = self.clf(x)
-                embedding[idxs] = e1.data.cpu()
-                if return_probs:
-                     pr = F.softmax(out,1)
-                     probs[idxs] = pr.data.cpu()
-        if return_probs: return embedding, probs
-        return embedding
+                p, emb = get_output(self.clf, x)
+                p = F.softmax(p, dim=1)
+                probs[idxs] = p.cpu().data
+                embedding[idxs] = emb.data.cpu()
+        return probs, embedding
