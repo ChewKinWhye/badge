@@ -42,7 +42,7 @@ class BadgeSampling(Strategy):
 
     def query(self, n):
         idxs_unlabeled = np.arange(self.n_pool)[~self.labelled_mask]
-        probs, embs = self.predict_output(self.X[idxs_unlabeled], self.Y[idxs_unlabeled])
+        probs, embs = self.predict_output([self.X[i] for i in idxs_unlabeled], self.Y[idxs_unlabeled])
         embs = embs.numpy()
         probs = probs.numpy()
 

@@ -7,6 +7,6 @@ class LeastConfidence(Strategy):
 
     def query(self, n):
         idxs_unlabeled = np.arange(self.n_pool)[~self.labelled_mask]
-        probs, _ = self.predict_output(self.X[idxs_unlabeled], self.Y[idxs_unlabeled])
+        probs, _ = self.predict_output([self.X[i] for i in idxs_unlabeled], self.Y[idxs_unlabeled])
         U = probs.max(1)[0]
         return idxs_unlabeled[U.sort()[1][:n]]
