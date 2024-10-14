@@ -25,7 +25,7 @@ def parse_args():
     parser.add_argument('--alg', help='acquisition algorithm, rand, conf, marg, badge, coreset', type=str, default='rand')
     parser.add_argument('--nQuery', help='number of points to query in a batch', type=int, default=500)
     parser.add_argument('--nStart', help='number of points to start', type=int, default=5000)
-    parser.add_argument('--nEnd', help='total number of points to query', type=int, default=15000)
+    parser.add_argument('--nEnd', help='total number of points to query', type=int, default=10000)
     # Method Args
     parser.add_argument('--method', help='which method to use: [none, meta, prune]', type=str, default='none')
     # Random Seed

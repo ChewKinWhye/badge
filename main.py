@@ -27,8 +27,6 @@ if __name__ == "__main__":
         strategy = RandomSampling(X_tr, Y_tr, P_tr, labelled_mask, handler, num_classes, args.num_epochs, args)
     elif args.alg == 'conf': # confidence-based sampling
         strategy = LeastConfidence(X_tr, Y_tr, P_tr, labelled_mask, handler, num_classes, args.num_epochs, args)
-    elif args.alg == 'marg': # margin-based sampling
-        strategy = MarginSampling(X_tr, Y_tr, P_tr, labelled_mask, handler, num_classes, args.num_epochs, args)
     elif args.alg == 'badge': # batch active learning by diverse gradient embeddings
         strategy = BadgeSampling(X_tr, Y_tr, P_tr, labelled_mask, handler, num_classes, args.num_epochs, args)
     elif args.alg == 'coreset': # coreset sampling
@@ -62,7 +60,8 @@ if __name__ == "__main__":
         test_minority_acc[rd], test_majority_acc[rd], test_average_acc[rd] = strategy.evaluate_model(loader_test)
 
         # Print and Clean up
-        print(f"Round {rd}, Train Size: {np.sum(labelled_mask)}, Test Average Accuracy: {test_average_acc[rd]}, "
+        print(f"Round {rd}, Fraction of minority: {np.sum(Y_tr[query_idxs] != P_tr[query_idxs])}/{args.nQuery}, "
+              f"Train Size: {np.sum(labelled_mask)}, Test Average Accuracy: {test_average_acc[rd]}, "
               f"Test Minority Accuracy: {test_minority_acc[rd]}, Test Majority Accuracy: {test_majority_acc[rd]}")
         torch.cuda.empty_cache()
         gc.collect()
