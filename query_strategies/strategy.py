@@ -85,12 +85,14 @@ class Strategy:
         # --- Train End ---
         print(f'Best validation accuracy: {best_val_avg_acc:.3f} at epoch {best_epoch}')
         state_dict = torch.load(os.path.join(self.args.save_dir, "ckpt.pt"))
-        self.clf.load_state_dict(state_dict)
+        self.clf = get_model(self.args.pretrained, self.args.architecture, self.num_classes).cuda()
+        self.clf.load_state_dict(state_dict, strict=False)
         return state_dict
 
-    def train_prune(self, X_query, Y_query, P_query, X_val, Y_val, P_val, verbose=True):
+    def train_prune(self, X_query, Y_query, P_query, X_val, Y_val, P_val, state_dict, verbose=True):
         # Freeze all weight paramters since we are only updating the masks
         for name, param in self.clf.named_parameters():
+            print(name)
             if "mask_weight" not in name:
                 param.requires_grad = False
             else:
@@ -148,7 +150,8 @@ class Strategy:
         # --- Train End ---
         print(f'Best validation accuracy: {best_val_avg_acc:.3f} at epoch {best_epoch}')
         state_dict = torch.load(os.path.join(self.args.save_dir, "ckpt.pt"))
-        self.clf.load_state_dict(state_dict)
+        self.clf = get_model(self.args.pretrained, self.args.architecture, self.num_classes).cuda()
+        self.clf.load_state_dict(state_dict, strict=False)
         return state_dict
 
     def evaluate_model(self, loader):
