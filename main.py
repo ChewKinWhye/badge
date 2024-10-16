@@ -54,7 +54,9 @@ if __name__ == "__main__":
         strategy.update(labelled_mask)
 
         # Draw Conclusions: Gain additional information
-
+        # Try adding this just to observe how well training the mask affects model
+        strategy.train_prune([X_tr[i] for i in query_idxs], Y_tr[query_idxs], P_tr[query_idxs], X_val, Y_val, P_val)
+        print(f"Minority, Majority, Average Test Accuracy: {strategy.evaluate_model(loader_test)}")
         # Next Round: Train (with inductive bias) and Test
         strategy.train(X_val, Y_val, P_val, verbose=False)
         test_minority_acc[rd], test_majority_acc[rd], test_average_acc[rd] = strategy.evaluate_model(loader_test)
