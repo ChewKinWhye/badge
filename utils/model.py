@@ -5,6 +5,7 @@ from typing import Any, Callable, List, Optional, Type, Union
 import torch
 import torch.nn as nn
 from torch import Tensor
+import torch.nn.functional as F
 
 
 
@@ -24,11 +25,29 @@ def get_model(pretrained, model, num_classes):
     net.fc = torch.nn.Linear(net.fc.in_features, num_classes)
     return net
 
+# https://github.com/lolemacs/continuous-sparsification/blob/master/models/layers.py
+class SoftMaskedConv2d(nn.Conv2d):
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding=0, dilation=1, groups=1, bias=True,
+        padding_mode='zeros',device=None, dtype=None):
+        super().__init__(in_channels, out_channels, kernel_size, stride, padding, dilation, groups, bias,
+        padding_mode,device, dtype)
+    def forward(self, input, mask, temp):
+        return self._conv_forward(input, self.weight, self.bias)
+    def _conv_forward(self, input: Tensor, weight: Tensor, bias: Optional[Tensor]):
+        return F.conv2d(input, weight, bias, self.stride, self.padding, self.dilation, self.groups)
+
+class SoftMaskedFC(nn.Linear):
+    def __init__(self, in_features, out_features, bias=True, device=None, dtype=None):
+        super().__init__(in_features, out_features, bias, device, dtype)
+    def forward(self, input, mask, temp):
+        return F.linear(input, self.weight, self.bias)
+
+
 # https://pytorch.org/vision/main/_modules/torchvision/models/resnet.html#resnet18
 
 def conv3x3(in_planes: int, out_planes: int, stride: int = 1, groups: int = 1, dilation: int = 1) -> nn.Conv2d:
     """3x3 convolution with padding"""
-    return nn.Conv2d(
+    return SoftMaskedConv2d(
         in_planes,
         out_planes,
         kernel_size=3,
@@ -42,7 +61,7 @@ def conv3x3(in_planes: int, out_planes: int, stride: int = 1, groups: int = 1, d
 
 def conv1x1(in_planes: int, out_planes: int, stride: int = 1) -> nn.Conv2d:
     """1x1 convolution"""
-    return nn.Conv2d(in_planes, out_planes, kernel_size=1, stride=stride, bias=False)
+    return SoftMaskedConv2d(in_planes, out_planes, kernel_size=1, stride=stride, bias=False)
 
 
 class BasicBlock(nn.Module):
@@ -75,14 +94,14 @@ class BasicBlock(nn.Module):
         self.downsample = downsample
         self.stride = stride
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor, mask, temp) -> Tensor:
         identity = x
 
-        out = self.conv1(x)
+        out = self.conv1(x, mask, temp)
         out = self.bn1(out)
         out = self.relu(out)
 
-        out = self.conv2(out)
+        out = self.conv2(out, mask, temp)
         out = self.bn2(out)
 
         if self.downsample is not None:
@@ -129,18 +148,18 @@ class Bottleneck(nn.Module):
         self.downsample = downsample
         self.stride = stride
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor, mask, temp) -> Tensor:
         identity = x
 
-        out = self.conv1(x)
+        out = self.conv1(x, mask, temp)
         out = self.bn1(out)
         out = self.relu(out)
 
-        out = self.conv2(out)
+        out = self.conv2(out, mask, temp)
         out = self.bn2(out)
         out = self.relu(out)
 
-        out = self.conv3(out)
+        out = self.conv3(out, mask, temp)
         out = self.bn3(out)
 
         if self.downsample is not None:
@@ -191,7 +210,7 @@ class ResNet(nn.Module):
         self.layer3 = self._make_layer(block, 256, layers[2], stride=2, dilate=replace_stride_with_dilation[1])
         self.layer4 = self._make_layer(block, 512, layers[3], stride=2, dilate=replace_stride_with_dilation[2])
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
-        self.fc = nn.Linear(512 * block.expansion, num_classes)
+        self.fc = SoftMaskedFC(512 * block.expansion, num_classes)
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
@@ -249,28 +268,32 @@ class ResNet(nn.Module):
                 )
             )
 
-        return nn.Sequential(*layers)
+        return nn.ModuleList(layers)
 
-    def _forward_impl(self, x: Tensor) -> Tensor:
+    def _forward_impl(self, x: Tensor, mask, temp) -> Tensor:
         # See note [TorchScript super()]
-        x = self.conv1(x)
+        x = self.conv1(x, mask, temp)
         x = self.bn1(x)
         x = self.relu(x)
         x = self.maxpool(x)
 
-        x = self.layer1(x)
-        x = self.layer2(x)
-        x = self.layer3(x)
-        x = self.layer4(x)
+        for layer in self.layer1:
+            x = layer(x, mask, temp)  # Pass both x and p to each layer's forward method
+        for layer in self.layer2:
+            x = layer(x, mask, temp)  # Pass both x and p to each layer's forward method
+        for layer in self.layer3:
+            x = layer(x, mask, temp)  # Pass both x and p to each layer's forward method
+        for layer in self.layer4:
+            x = layer(x, mask, temp)  # Pass both x and p to each layer's forward method
 
         x = self.avgpool(x)
         x = torch.flatten(x, 1)
-        x = self.fc(x)
+        x = self.fc(x, mask, temp)
 
         return x
 
-    def forward(self, x: Tensor) -> Tensor:
-        return self._forward_impl(x)
+    def forward(self, x: Tensor, mask=False, temp=1) -> Tensor:
+        return self._forward_impl(x, mask, temp)
 
 
 def _resnet(
