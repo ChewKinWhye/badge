@@ -3,7 +3,7 @@ from torch.autograd import Variable
 from utils.utils import AverageMeter, update_meter, load_model, get_output
 import time
 import tqdm
-
+from utils.model import get_model
 import torch.nn.functional as F
 import torch.optim as optim
 import numpy as np
@@ -30,7 +30,8 @@ class Strategy:
 
     def train(self, X_val, Y_val, P_val, verbose=True):
         # Initialize model and optimizer
-        self.clf = load_model(self.args.pretrained, self.args.architecture, self.num_classes).cuda()
+        self.clf = get_model(self.args.pretrained, self.args.architecture, self.num_classes).cuda()
+        #self.clf = load_model(self.args.pretrained, self.args.architecture, self.num_classes).cuda()
         optimizer = optim.Adam(self.clf.parameters(), lr=self.args.lr, weight_decay=self.args.weight_decay)
 
         # Obtain train and validation dataset and loader
