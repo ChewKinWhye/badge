@@ -15,11 +15,11 @@ def get_model(pretrained, model, num_classes):
     if model == 'resnet18':
         net = resnet18()
         if pretrained:
-            net.load_state_dict(torchvision.models.resnet18(weights=ResNet18_Weights.IMAGENET1K_V1).state_dict())
+            net.load_state_dict(torchvision.models.resnet18(weights=ResNet18_Weights.IMAGENET1K_V1).state_dict(), strict=False)
     elif model == 'resnet50':
         net = resnet50()
         if pretrained:
-            net.load_state_dict(torchvision.models.resnet18(weights=ResNet50_Weights.IMAGENET1K_V1).state_dict())
+            net.load_state_dict(torchvision.models.resnet18(weights=ResNet50_Weights.IMAGENET1K_V1).state_dict(), strict=False)
     else:
         print('choose a valid model - resnet18 or resnet50', flush=True)
         raise ValueError
