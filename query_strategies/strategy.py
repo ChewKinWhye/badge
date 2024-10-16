@@ -102,12 +102,13 @@ class Strategy:
 
     def predict(self, X, Y):
         self.clf.eval()
-        data_loader = DataLoader(self.handler(X, torch.Tensor(Y).long(), isTrain=False),
+        # Spurious Attribute does not matter
+        data_loader = DataLoader(self.handler(X, torch.Tensor(Y).long(), torch.Tensor(Y).long(), isTrain=False),
                                shuffle=False, batch_size=self.args.batch_size)
 
         P = torch.zeros(len(Y)).long()
         with torch.no_grad():
-            for x, y, idxs in data_loader:
+            for x, y, _, idxs in data_loader:
                 x, y = Variable(x.cuda()), Variable(y.cuda())
                 out = self.clf(x)
                 pred = out.max(1)[1]
@@ -116,13 +117,14 @@ class Strategy:
 
     def predict_output(self, X, Y):
         self.clf.eval()
-        data_loader = DataLoader(self.handler(X, torch.Tensor(Y).long(), isTrain=False),
+        # Spurious Attribute does not matter
+        data_loader = DataLoader(self.handler(X, torch.Tensor(Y).long(), torch.Tensor(Y).long(), isTrain=False),
                                  shuffle=False, batch_size=self.args.batch_size)
         probs = torch.zeros([len(Y), len(np.unique(self.Y))])
         embedding = torch.zeros([len(Y), 512])
 
         with torch.no_grad():
-            for x, y, idxs in data_loader:
+            for x, y, _, idxs in data_loader:
                 x, y = Variable(x.cuda()), Variable(y.cuda())
                 p, emb = get_output(self.clf, x)
                 p = F.softmax(p, dim=1)
