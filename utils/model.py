@@ -105,7 +105,7 @@ class BasicBlock(nn.Module):
         out = self.bn2(out)
 
         if self.downsample is not None:
-            identity = self.downsample(x)
+            identity = self.downsample[1](self.downsample[0](x, mask, temp))
 
         out += identity
         out = self.relu(out)
@@ -163,7 +163,7 @@ class Bottleneck(nn.Module):
         out = self.bn3(out)
 
         if self.downsample is not None:
-            identity = self.downsample(x)
+            identity = self.downsample[1](self.downsample[0](x, mask, temp))
 
         out += identity
         out = self.relu(out)
@@ -244,10 +244,7 @@ class ResNet(nn.Module):
             self.dilation *= stride
             stride = 1
         if stride != 1 or self.inplanes != planes * block.expansion:
-            downsample = nn.Sequential(
-                conv1x1(self.inplanes, planes * block.expansion, stride),
-                norm_layer(planes * block.expansion),
-            )
+            downsample = nn.ModuleList([conv1x1(self.inplanes, planes * block.expansion, stride), norm_layer(planes * block.expansion)])
 
         layers = []
         layers.append(
