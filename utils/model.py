@@ -8,6 +8,8 @@ from torch import Tensor
 import torch.nn.functional as F
 
 
+def sigmoid(x):
+    return float(1./(1.+torch.exp(-x)))
 
 def get_model(pretrained, model, num_classes):
     if model == 'resnet18':
@@ -31,16 +33,24 @@ class SoftMaskedConv2d(nn.Conv2d):
         padding_mode='zeros',device=None, dtype=None):
         super().__init__(in_channels, out_channels, kernel_size, stride, padding, dilation, groups, bias,
         padding_mode,device, dtype)
+        self.mask_weight = nn.Parameter(torch.zeros_like(self.weight))
     def forward(self, input, mask, temp):
-        return self._conv_forward(input, self.weight, self.bias)
+        if mask:
+            return self._conv_forward(input, self.weight*sigmoid(self.mask_weight*temp), self.bias)
+        else:
+            return self._conv_forward(input, self.weight, self.bias)
     def _conv_forward(self, input: Tensor, weight: Tensor, bias: Optional[Tensor]):
         return F.conv2d(input, weight, bias, self.stride, self.padding, self.dilation, self.groups)
 
 class SoftMaskedFC(nn.Linear):
     def __init__(self, in_features, out_features, bias=True, device=None, dtype=None):
         super().__init__(in_features, out_features, bias, device, dtype)
+        self.mask_weight = nn.Parameter(torch.zeros_like(self.weight))
     def forward(self, input, mask, temp):
-        return F.linear(input, self.weight, self.bias)
+        if mask:
+            return F.linear(input, self.weight*sigmoid(self.mask_weight*temp), self.bias)
+        else:
+            return F.linear(input, self.weight, self.bias)
 
 
 # https://pytorch.org/vision/main/_modules/torchvision/models/resnet.html#resnet18
