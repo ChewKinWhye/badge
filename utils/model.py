@@ -9,7 +9,7 @@ import torch.nn.functional as F
 
 
 def sigmoid(x):
-    return float(1./(1.+torch.exp(-x)))
+    return 1/(1+torch.exp(-x))
 
 def get_model(pretrained, model, num_classes):
     if model == 'resnet18':
