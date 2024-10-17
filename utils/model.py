@@ -34,7 +34,7 @@ class SoftMaskedConv2d(nn.Conv2d):
         super().__init__(in_channels, out_channels, kernel_size, stride, padding, dilation, groups, bias,
         padding_mode,device, dtype)
         self.mask_weight = nn.Parameter(torch.zeros_like(self.weight))
-        self.mask = False
+        self.register_buffer('mask', torch.tensor(False, dtype=torch.bool))
     def forward(self, input):
         if self.mask:
             return self._conv_forward(input, self.weight*sigmoid(self.mask_weight), self.bias)
@@ -47,7 +47,7 @@ class SoftMaskedFC(nn.Linear):
     def __init__(self, in_features, out_features, bias=True, device=None, dtype=None):
         super().__init__(in_features, out_features, bias, device, dtype)
         self.mask_weight = nn.Parameter(torch.zeros_like(self.weight))
-        self.mask = False
+        self.register_buffer('mask', torch.tensor(False, dtype=torch.bool))
     def forward(self, input):
         if self.mask:
             return F.linear(input, self.weight*sigmoid(self.mask_weight), self.bias)

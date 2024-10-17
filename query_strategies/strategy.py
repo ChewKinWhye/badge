@@ -92,10 +92,13 @@ class Strategy:
     def train_prune(self, X_query, Y_query, P_query, X_val, Y_val, P_val, verbose=True):
         # Freeze all weight paramters since we are only updating the masks
         for name, param in self.clf.named_parameters():
-            param.requires_grad = False
-        # Decide which modules to mask - fc
-        self.clf.fc.mask_weight.requires_grad = False
-        self.clf.fc.mask = True
+            if "mask_weight" in name or "bn" in name:
+                param.requires_grad = True
+            else:
+                param.requires_grad = False
+        for name, buff in model.named_buffers():
+            if "mask" in name:
+                buff.fill_(True)
 
         optimizer = optim.Adam(self.clf.parameters(), lr=self.args.lr, weight_decay=self.args.weight_decay)
 
