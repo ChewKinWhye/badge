@@ -96,7 +96,7 @@ class Strategy:
                 param.requires_grad = True
             else:
                 param.requires_grad = False
-        for name, buff in model.named_buffers():
+        for name, buff in self.clf.named_buffers():
             if "mask" in name:
                 buff.fill_(True)
 
