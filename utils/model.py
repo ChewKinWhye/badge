@@ -34,9 +34,10 @@ class SoftMaskedConv2d(nn.Conv2d):
         super().__init__(in_channels, out_channels, kernel_size, stride, padding, dilation, groups, bias,
         padding_mode,device, dtype)
         self.mask_weight = nn.Parameter(torch.zeros_like(self.weight))
-    def forward(self, input, mask, temp):
-        if mask:
-            return self._conv_forward(input, self.weight*sigmoid(self.mask_weight*temp), self.bias)
+        self.mask = False
+    def forward(self, input):
+        if self.mask:
+            return self._conv_forward(input, self.weight*sigmoid(self.mask_weight), self.bias)
         else:
             return self._conv_forward(input, self.weight, self.bias)
     def _conv_forward(self, input: Tensor, weight: Tensor, bias: Optional[Tensor]):
@@ -46,9 +47,10 @@ class SoftMaskedFC(nn.Linear):
     def __init__(self, in_features, out_features, bias=True, device=None, dtype=None):
         super().__init__(in_features, out_features, bias, device, dtype)
         self.mask_weight = nn.Parameter(torch.zeros_like(self.weight))
-    def forward(self, input, mask, temp):
-        if mask:
-            return F.linear(input, self.weight*sigmoid(self.mask_weight*temp), self.bias)
+        self.mask = False
+    def forward(self, input):
+        if self.mask:
+            return F.linear(input, self.weight*sigmoid(self.mask_weight), self.bias)
         else:
             return F.linear(input, self.weight, self.bias)
 
@@ -104,18 +106,18 @@ class BasicBlock(nn.Module):
         self.downsample = downsample
         self.stride = stride
 
-    def forward(self, x: Tensor, mask, temp) -> Tensor:
+    def forward(self, x: Tensor) -> Tensor:
         identity = x
 
-        out = self.conv1(x, mask, temp)
+        out = self.conv1(x)
         out = self.bn1(out)
         out = self.relu(out)
 
-        out = self.conv2(out, mask, temp)
+        out = self.conv2(out)
         out = self.bn2(out)
 
         if self.downsample is not None:
-            identity = self.downsample[1](self.downsample[0](x, mask, temp))
+            identity = self.downsample(x)
 
         out += identity
         out = self.relu(out)
@@ -158,22 +160,22 @@ class Bottleneck(nn.Module):
         self.downsample = downsample
         self.stride = stride
 
-    def forward(self, x: Tensor, mask, temp) -> Tensor:
+    def forward(self, x: Tensor) -> Tensor:
         identity = x
 
-        out = self.conv1(x, mask, temp)
+        out = self.conv1(x)
         out = self.bn1(out)
         out = self.relu(out)
 
-        out = self.conv2(out, mask, temp)
+        out = self.conv2(out)
         out = self.bn2(out)
         out = self.relu(out)
 
-        out = self.conv3(out, mask, temp)
+        out = self.conv3(out)
         out = self.bn3(out)
 
         if self.downsample is not None:
-            identity = self.downsample[1](self.downsample[0](x, mask, temp))
+            identity = self.downsample(x)
 
         out += identity
         out = self.relu(out)
@@ -254,7 +256,7 @@ class ResNet(nn.Module):
             self.dilation *= stride
             stride = 1
         if stride != 1 or self.inplanes != planes * block.expansion:
-            downsample = nn.ModuleList([conv1x1(self.inplanes, planes * block.expansion, stride), norm_layer(planes * block.expansion)])
+            downsample = nn.Sequential(conv1x1(self.inplanes, planes * block.expansion, stride), norm_layer(planes * block.expansion))
 
         layers = []
         layers.append(
@@ -275,32 +277,26 @@ class ResNet(nn.Module):
                 )
             )
 
-        return nn.ModuleList(layers)
+        return nn.Sequential(*layers)
 
-    def _forward_impl(self, x: Tensor, mask, temp) -> Tensor:
+    def _forward_impl(self, x: Tensor) -> Tensor:
         # See note [TorchScript super()]
-        x = self.conv1(x, mask, temp)
+        x = self.conv1(x)
         x = self.bn1(x)
         x = self.relu(x)
         x = self.maxpool(x)
-
-        for layer in self.layer1:
-            x = layer(x, mask, temp)  # Pass both x and p to each layer's forward method
-        for layer in self.layer2:
-            x = layer(x, mask, temp)  # Pass both x and p to each layer's forward method
-        for layer in self.layer3:
-            x = layer(x, mask, temp)  # Pass both x and p to each layer's forward method
-        for layer in self.layer4:
-            x = layer(x, mask, temp)  # Pass both x and p to each layer's forward method
-
+        x = self.layer1(x)
+        x = self.layer2(x)
+        x = self.layer3(x)
+        x = self.layer4(x)
         x = self.avgpool(x)
         x = torch.flatten(x, 1)
-        x = self.fc(x, mask, temp)
+        x = self.fc(x)
 
         return x
 
-    def forward(self, x: Tensor, mask=False, temp=1) -> Tensor:
-        return self._forward_impl(x, mask, temp)
+    def forward(self, x: Tensor) -> Tensor:
+        return self._forward_impl(x)
 
 
 def _resnet(

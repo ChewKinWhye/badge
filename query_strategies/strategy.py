@@ -89,14 +89,14 @@ class Strategy:
         self.clf.load_state_dict(state_dict, strict=False)
         return state_dict
 
-    def train_prune(self, X_query, Y_query, P_query, X_val, Y_val, P_val, state_dict, verbose=True):
+    def train_prune(self, X_query, Y_query, P_query, X_val, Y_val, P_val, verbose=True):
         # Freeze all weight paramters since we are only updating the masks
         for name, param in self.clf.named_parameters():
-            print(name)
-            if "mask_weight" not in name:
-                param.requires_grad = False
-            else:
-                param.requires_grad = True
+            param.requires_grad = False
+        # Decide which modules to mask - fc
+        self.clf.fc.mask_weight.requires_grad = False
+        self.clf.fc.mask = True
+
         optimizer = optim.Adam(self.clf.parameters(), lr=self.args.lr, weight_decay=self.args.weight_decay)
 
         # Obtain train and validation dataset and loader, dataset to train the mask is simply the queried points
@@ -121,7 +121,7 @@ class Strategy:
                 optimizer.zero_grad()
 
                 # Cross Entropy Loss
-                logits = self.clf(x, mask=True, temp=1) # Set temperature as 1 allows for soft masking. For binary mask, temperature should increase with epoch
+                logits = self.clf(x) # Set temperature as 1 allows for soft masking. For binary mask, temperature should increase with epoch
                 loss = criterion(logits, y)
 
                 loss.backward()
