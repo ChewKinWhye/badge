@@ -43,8 +43,8 @@ class CustomConv(nn.Conv2d):
     def _conv_forward(self, input: Tensor, weight: Tensor, bias: Optional[Tensor]):
         return F.conv2d(input, weight, bias, self.stride, self.padding, self.dilation, self.groups)
 
-    def meta_forward(self, input, fast_weights):
-        return self._conv_forward(input, fast_weights.weight, self.bias) # We just use self.bias since all the convolutions have bias=False
+    def meta_forward(self, input, fast_weights, name):
+        return self._conv_forward(input, fast_weights[name+".weight"], self.bias) # We just use self.bias since all the convolutions have bias=False
 
 class CustomFC(nn.Linear):
     def __init__(self, in_features, out_features, bias=True, device=None, dtype=None):
@@ -56,8 +56,8 @@ class CustomFC(nn.Linear):
             return F.linear(input, self.weight*sigmoid(self.mask_weight), self.bias)
         else:
             return F.linear(input, self.weight, self.bias)
-    def meta_forward(self, input, fast_weights):
-        return F.linear(input, fast_weights.weight, fast_weights.bias)
+    def meta_forward(self, input, fast_weights, name):
+        return F.linear(input, fast_weights[name+".weight"], fast_weights[name+".bias"])
 
 
 class CustomBN(nn.BatchNorm2d):
@@ -65,7 +65,7 @@ class CustomBN(nn.BatchNorm2d):
         super().__init__(inplanes)
 
     # Code from https://pytorch.org/docs/stable/_modules/torch/nn/modules/batchnorm.html#BatchNorm2d, replace self.weight and self.bias with fast_weights
-    def meta_forward(self, input, fast_weights):
+    def meta_forward(self, input, fast_weights, name):
         self._check_input_dim(input)
 
         if self.momentum is None:
@@ -93,8 +93,8 @@ class CustomBN(nn.BatchNorm2d):
             if not self.training or self.track_running_stats
             else None,
             self.running_var if not self.training or self.track_running_stats else None,
-            fast_weights.weight,
-            fast_weights.bias,
+            fast_weights[name+".weight"],
+            fast_weights[name+".bias"],
             bn_training,
             exponential_average_factor,
             self.eps,
@@ -169,18 +169,18 @@ class BasicBlock(nn.Module):
 
         return out
 
-    def meta_forward(self, x, fast_weights):
+    def meta_forward(self, x, fast_weights, name):
         identity = x
 
-        out = self.conv1.meta_forward(x, fast_weights.conv1)
-        out = self.bn1.meta_forward(out, fast_weights.bn1)
+        out = self.conv1.meta_forward(x, fast_weights, name+".conv1")
+        out = self.bn1.meta_forward(out, fast_weights, name+".bn1")
         out = self.relu(out)
 
-        out = self.conv2.meta_forward(out, fast_weights.conv2)
-        out = self.bn2.meta_forward(out, fast_weights.bn2)
+        out = self.conv2.meta_forward(out, fast_weights, name+".conv2")
+        out = self.bn2.meta_forward(out, fast_weights, name+".bn2")
 
         if self.downsample is not None:
-            identity = self.downsample[1](self.downsample[0](x, fast_weights.downsample[0]), fast_weights.downsample[1])
+            identity = self.downsample[1](self.downsample[0](x, fast_weights, name+".downsample.0"), fast_weights, name+".downsample.1")
 
         out += identity
         out = self.relu(out)
@@ -245,22 +245,22 @@ class Bottleneck(nn.Module):
 
         return out
 
-    def meta_forward(self, x, fast_weights):
+    def meta_forward(self, x, fast_weights, name):
         identity = x
 
-        out = self.conv1.meta_forward(x, fast_weights.conv1)
-        out = self.bn1.meta_forward(out, fast_weights.bn1)
+        out = self.conv1.meta_forward(x, fast_weights, name+".conv1")
+        out = self.bn1.meta_forward(out, fast_weights, name+".bn1")
         out = self.relu(out)
 
-        out = self.conv2.meta_forward(out, fast_weights.conv2)
-        out = self.bn2.meta_forward(out, fast_weights.bn2)
+        out = self.conv2.meta_forward(out, fast_weights, name+".conv2")
+        out = self.bn2.meta_forward(out, fast_weights, name+".bn2")
         out = self.relu(out)
 
-        out = self.conv3.meta_forward(out, fast_weights.conv3)
-        out = self.bn3.meta_forward(out, fast_weights.bn3)
+        out = self.conv3.meta_forward(out, fast_weights, name+".conv3")
+        out = self.bn3.meta_forward(out, fast_weights, name+".bn3")
 
         if self.downsample is not None:
-            identity = self.downsample[1](self.downsample[0](x, fast_weights.downsample[0]), fast_weights.downsample[1])
+            identity = self.downsample[1](self.downsample[0](x, fast_weights, name+".downsample.0"), fast_weights, name+".downsample.1")
 
         out += identity
         out = self.relu(out)
@@ -383,18 +383,18 @@ class ResNet(nn.Module):
         return self._forward_impl(x)
 
     def meta_forward(self, x, fast_weights):
-        x = self.conv1.meta_forward(x, fast_weights.conv1)
-        x = self.bn1.meta_forward(x, fast_weights.bn1)
+        x = self.conv1.meta_forward(x, fast_weights, "conv1")
+        x = self.bn1.meta_forward(x, fast_weights, "bn1")
         x = self.relu(x)
         x = self.maxpool(x)
         for idx, block in enumerate(self.layer1):
-            x = block.meta_forward(x, fast_weights.layer1[idx])
+            x = block.meta_forward(x, fast_weights, f"layer1.{idx}")
         for idx, block in enumerate(self.layer2):
-            x = block.meta_forward(x, fast_weights.layer2[idx])
+            x = block.meta_forward(x, fast_weights, f"layer2.{idx}")
         for idx, block in enumerate(self.layer3):
-            x = block.meta_forward(x, fast_weights.layer3[idx])
+            x = block.meta_forward(x, fast_weights, f"layer3.{idx}")
         for idx, block in enumerate(self.layer4):
-            x = block.meta_forward(x, fast_weights.layer4[idx])
+            x = block.meta_forward(x, fast_weights, f"layer4.{idx}")
 
         x = self.avgpool(x)
         x = torch.flatten(x, 1)

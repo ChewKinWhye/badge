@@ -42,7 +42,7 @@ if __name__ == "__main__":
                             shuffle=False, batch_size=args.batch_size)
 
     # Round 0 Train and Test
-    state_dict = strategy.train(X_val, Y_val, P_val, verbose=True) # Print out first round of training
+    strategy.train(X_val, Y_val, P_val, verbose=True) # Print out first round of training
     test_minority_acc[0], test_majority_acc[0], test_average_acc[0] = strategy.evaluate_model(loader_test)
     print(f"Round 0, Train Size: {np.sum(labelled_mask)}, Test Average Accuracy: {test_average_acc[0]}, "
           f"Test Minority Accuracy: {test_minority_acc[0]}, Test Majority Accuracy: {test_majority_acc[0]}")
@@ -50,17 +50,19 @@ if __name__ == "__main__":
     for rd in range(1, NUM_ROUNDS+1):
         # Query
         query_idxs = strategy.query(args.nQuery)
-        strategy.train_MAML([X_tr[i] for i in query_idxs], Y_tr[query_idxs], P_tr[query_idxs], X_val, Y_val, P_val)
 
+        # Draw Conclusions: Gain additional information, this step currently does not influence the next iteration of training
+        if args.method == "meta":
+            strategy.train_MAML([X_tr[i] for i in query_idxs], Y_tr[query_idxs], P_tr[query_idxs], X_val, Y_val, P_val)
+        elif args.method == "mask":
+            strategy.train_prune([X_tr[i] for i in query_idxs], Y_tr[query_idxs], P_tr[query_idxs], X_val, Y_val, P_val)
+        print(f"Minority, Majority, Average Test Accuracy: {strategy.evaluate_model(loader_test)}")
+
+
+        # Next Round: Train and Test
         labelled_mask[query_idxs] = True
         strategy.update(labelled_mask)
-
-        # Draw Conclusions: Gain additional information
-        # Try adding this just to observe how well training the mask affects model
-        strategy.train_prune([X_tr[i] for i in query_idxs], Y_tr[query_idxs], P_tr[query_idxs], X_val, Y_val, P_val)
-        print(f"Minority, Majority, Average Test Accuracy: {strategy.evaluate_model(loader_test)}")
-        # Next Round: Train (with inductive bias) and Test
-        state_dict = strategy.train(X_val, Y_val, P_val, verbose=False)
+        strategy.train(X_val, Y_val, P_val, verbose=False)
         test_minority_acc[rd], test_majority_acc[rd], test_average_acc[rd] = strategy.evaluate_model(loader_test)
 
         # Print and Clean up
