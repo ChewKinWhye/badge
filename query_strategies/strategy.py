@@ -186,15 +186,15 @@ class Strategy:
 
             for batch in tqdm.tqdm(loader_tr, disable=True):
                 # Copy weights
-                fast_weights = list(self.clf.parameters())
+                fast_weights = dict(self.clf.named_parameters())
                 x, y, p, idxs = batch
                 x, y, p, idxs = x.cuda(), y.cuda(), p.cuda(), idxs.cuda()
                 # Take 5 update steps on the training dataset
                 for k in range(5):
                     logits = self.clf.meta_forward(x, fast_weights)
                     loss = criterion(logits, y)
-                    grad = torch.autograd.grad(loss, fast_weights)
-                    fast_weights = list(map(lambda p: p[1] - self.args.lr * p[0], zip(grad, fast_weights)))
+                    grad = torch.autograd.grad(loss, fast_weights.values)
+                    fast_weights = {name: param - self.args.ls * grad_part for (name, param), grad_part in zip(fast_weights.items(), grad)}
                 # Compute loss on query (meta) dataset
                 x_meta, y_meta, p_meta, idxs_meta = next(iter(loader_tr_meta))
                 x_meta, y_meta, p_meta, idxs_meta = x_meta.cuda(), y_meta.cuda(), p_meta.cuda(), idxs_meta.cuda()
