@@ -9,6 +9,8 @@ import torch.optim as optim
 import numpy as np
 import torch
 import os
+import copy
+import torch.autograd as autograd
 
 class Strategy:
     def __init__(self, X, Y, P, labelled_mask, handler, num_classes, num_epochs, args):
@@ -135,6 +137,78 @@ class Strategy:
                 train_avg_acc, train_minority_acc, train_majority_acc = update_meter(train_avg_acc, train_minority_acc,
                                                                                      train_majority_acc,
                                                                                      logits.detach(), y, p)
+
+            self.clf.eval()
+            val_minority_acc, val_majority_acc, val_avg_acc = self.evaluate_model(loader_val)
+            # Save best model based on worst group accuracy
+            if val_avg_acc > best_val_avg_acc:
+                torch.save(self.clf.state_dict(), os.path.join(self.args.save_dir, "ckpt.pt"))
+                best_val_avg_acc = val_avg_acc
+                best_epoch = epoch
+            # Print stats
+            if verbose:
+                print(f"Epoch {epoch} Loss: {ce_loss_meter.avg:.3f} Time Taken: {time.time() - start:.3f}")
+                print(f"Train Average Accuracy: {train_avg_acc.avg:.3f} Train Majority Accuracy: {train_majority_acc.avg:.3f} "
+                    f"Train Minority Accuracy: {train_minority_acc.avg:.3f}")
+                print(f"Val Average Accuracy: {val_avg_acc:.3f} Val Majority Accuracy: {val_majority_acc:.3f} "
+                      f"Val Minority Accuracy: {val_minority_acc:.3f}")
+        # --- Train End ---
+        print(f'Best validation accuracy: {best_val_avg_acc:.3f} at epoch {best_epoch}')
+        state_dict = torch.load(os.path.join(self.args.save_dir, "ckpt.pt"))
+        self.clf = get_model(self.args.pretrained, self.args.architecture, self.num_classes).cuda()
+        self.clf.load_state_dict(state_dict, strict=False)
+        return state_dict
+
+    def train_MAML(self, X_query, Y_query, P_query, X_val, Y_val, P_val, verbose=True):
+        # Initialize model and optimizer
+        self.clf = get_model(self.args.pretrained, self.args.architecture, self.num_classes).cuda()
+        optimizer = optim.Adam(self.clf.parameters(), lr=self.args.lr, weight_decay=self.args.weight_decay)
+
+        # Obtain train and validation dataset and loader
+        idxs_train = np.arange(self.n_pool)[self.labelled_mask].astype(int)
+        loader_tr = DataLoader(self.handler([self.X[i] for i in idxs_train], torch.Tensor(self.Y[idxs_train]).long(), torch.Tensor(self.P[idxs_train]).long(), isTrain=True),
+                               shuffle=True, batch_size=self.args.batch_size)
+        loader_tr_meta = DataLoader(self.handler(X_query, torch.Tensor(Y_query).long(), torch.Tensor(P_query).long(), isTrain=True),
+                               shuffle=True, batch_size=self.args.batch_size)
+        loader_val = DataLoader(self.handler(X_val, torch.Tensor(Y_val).long(), torch.Tensor(P_val).long(), isTrain=False),
+                               shuffle=False, batch_size=self.args.batch_size)
+
+        criterion = torch.nn.CrossEntropyLoss()
+
+        # --- Train Start ---
+        best_val_avg_acc, best_epoch = -1, None
+        for epoch in range(self.num_epochs):
+            self.clf.train()
+            # Track metrics
+            ce_loss_meter, train_minority_acc, train_majority_acc, train_avg_acc = AverageMeter(), AverageMeter(), \
+                                                                                   AverageMeter(), AverageMeter()
+            start = time.time()
+
+            for batch in tqdm.tqdm(loader_tr, disable=True):
+                # Copy weights
+                fast_weights = list(self.clf.parameters())
+                x, y, p, idxs = batch
+                x, y, p, idxs = x.cuda(), y.cuda(), p.cuda(), idxs.cuda()
+                # Take 5 update steps on the training dataset
+                for k in range(5):
+                    logits = self.clf.meta_forward(x, fast_weights)
+                    loss = criterion(logits, y)
+                    grad = torch.autograd.grad(loss, fast_weights)
+                    fast_weights = list(map(lambda p: p[1] - self.args.lr * p[0], zip(grad, fast_weights)))
+                # Compute loss on query (meta) dataset
+                x_meta, y_meta, p_meta, idxs_meta = next(iter(loader_tr_meta))
+                x_meta, y_meta, p_meta, idxs_meta = x_meta.cuda(), y_meta.cuda(), p_meta.cuda(), idxs_meta.cuda()
+                logits_meta = self.clf.meta_forward(x_meta, fast_weights)
+                meta_loss = criterion(logits_meta, y_meta)
+                optimizer.zero_grad()
+                meta_loss.backward()
+                optimizer.step()
+
+                # Monitor training stats
+                ce_loss_meter.update(torch.mean(meta_loss).detach().item(), x.size(0))
+                train_avg_acc, train_minority_acc, train_majority_acc = update_meter(train_avg_acc, train_minority_acc,
+                                                                                     train_majority_acc,
+                                                                                     logits_meta.detach(), y, p)
 
             self.clf.eval()
             val_minority_acc, val_majority_acc, val_avg_acc = self.evaluate_model(loader_val)

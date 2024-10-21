@@ -50,6 +50,8 @@ if __name__ == "__main__":
     for rd in range(1, NUM_ROUNDS+1):
         # Query
         query_idxs = strategy.query(args.nQuery)
+        strategy.train_MAML([X_tr[i] for i in query_idxs], Y_tr[query_idxs], P_tr[query_idxs], X_val, Y_val, P_val)
+
         labelled_mask[query_idxs] = True
         strategy.update(labelled_mask)
 

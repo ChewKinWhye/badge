@@ -24,11 +24,11 @@ def get_model(pretrained, model, num_classes):
         print('choose a valid model - resnet18 or resnet50', flush=True)
         raise ValueError
 
-    net.fc = SoftMaskedFC(net.fc.in_features, num_classes)
+    net.fc = CustomFC(net.fc.in_features, num_classes)
     return net
 
 # https://github.com/lolemacs/continuous-sparsification/blob/master/models/layers.py
-class SoftMaskedConv2d(nn.Conv2d):
+class CustomConv(nn.Conv2d):
     def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding=0, dilation=1, groups=1, bias=True,
         padding_mode='zeros',device=None, dtype=None):
         super().__init__(in_channels, out_channels, kernel_size, stride, padding, dilation, groups, bias,
@@ -43,7 +43,10 @@ class SoftMaskedConv2d(nn.Conv2d):
     def _conv_forward(self, input: Tensor, weight: Tensor, bias: Optional[Tensor]):
         return F.conv2d(input, weight, bias, self.stride, self.padding, self.dilation, self.groups)
 
-class SoftMaskedFC(nn.Linear):
+    def meta_forward(self, input, fast_weights):
+        return self._conv_forward(input, fast_weights.weight, self.bias) # We just use self.bias since all the convolutions have bias=False
+
+class CustomFC(nn.Linear):
     def __init__(self, in_features, out_features, bias=True, device=None, dtype=None):
         super().__init__(in_features, out_features, bias, device, dtype)
         self.mask_weight = nn.Parameter(torch.zeros_like(self.weight))
@@ -53,13 +56,55 @@ class SoftMaskedFC(nn.Linear):
             return F.linear(input, self.weight*sigmoid(self.mask_weight), self.bias)
         else:
             return F.linear(input, self.weight, self.bias)
+    def meta_forward(self, input, fast_weights):
+        return F.linear(input, fast_weights.weight, fast_weights.bias)
 
+
+class CustomBN(nn.BatchNorm2d):
+    def __init__(self, inplanes):
+        super().__init__(inplanes)
+
+    # Code from https://pytorch.org/docs/stable/_modules/torch/nn/modules/batchnorm.html#BatchNorm2d, replace self.weight and self.bias with fast_weights
+    def meta_forward(self, input, fast_weights):
+        self._check_input_dim(input)
+
+        if self.momentum is None:
+            exponential_average_factor = 0.0
+        else:
+            exponential_average_factor = self.momentum
+
+        if self.training and self.track_running_stats:
+            if self.num_batches_tracked is not None:  # type: ignore[has-type]
+                self.num_batches_tracked.add_(1)  # type: ignore[has-type]
+                if self.momentum is None:  # use cumulative moving average
+                    exponential_average_factor = 1.0 / float(self.num_batches_tracked)
+                else:  # use exponential moving average
+                    exponential_average_factor = self.momentum
+
+        if self.training:
+            bn_training = True
+        else:
+            bn_training = (self.running_mean is None) and (self.running_var is None)
+
+        return F.batch_norm(
+            input,
+            # If buffers are not to be tracked, ensure that they won't be updated
+            self.running_mean
+            if not self.training or self.track_running_stats
+            else None,
+            self.running_var if not self.training or self.track_running_stats else None,
+            fast_weights.weight,
+            fast_weights.bias,
+            bn_training,
+            exponential_average_factor,
+            self.eps,
+        )
 
 # https://pytorch.org/vision/main/_modules/torchvision/models/resnet.html#resnet18
 
 def conv3x3(in_planes: int, out_planes: int, stride: int = 1, groups: int = 1, dilation: int = 1) -> nn.Conv2d:
     """3x3 convolution with padding"""
-    return SoftMaskedConv2d(
+    return CustomConv(
         in_planes,
         out_planes,
         kernel_size=3,
@@ -73,7 +118,7 @@ def conv3x3(in_planes: int, out_planes: int, stride: int = 1, groups: int = 1, d
 
 def conv1x1(in_planes: int, out_planes: int, stride: int = 1) -> nn.Conv2d:
     """1x1 convolution"""
-    return SoftMaskedConv2d(in_planes, out_planes, kernel_size=1, stride=stride, bias=False)
+    return CustomConv(in_planes, out_planes, kernel_size=1, stride=stride, bias=False)
 
 
 class BasicBlock(nn.Module):
@@ -92,7 +137,7 @@ class BasicBlock(nn.Module):
     ) -> None:
         super().__init__()
         if norm_layer is None:
-            norm_layer = nn.BatchNorm2d
+            norm_layer = CustomBN
         if groups != 1 or base_width != 64:
             raise ValueError("BasicBlock only supports groups=1 and base_width=64")
         if dilation > 1:
@@ -124,6 +169,24 @@ class BasicBlock(nn.Module):
 
         return out
 
+    def meta_forward(self, x, fast_weights):
+        identity = x
+
+        out = self.conv1.meta_forward(x, fast_weights.conv1)
+        out = self.bn1.meta_forward(out, fast_weights.bn1)
+        out = self.relu(out)
+
+        out = self.conv2.meta_forward(out, fast_weights.conv2)
+        out = self.bn2.meta_forward(out, fast_weights.bn2)
+
+        if self.downsample is not None:
+            identity = self.downsample[1](self.downsample[0](x, fast_weights.downsample[0]), fast_weights.downsample[1])
+
+        out += identity
+        out = self.relu(out)
+
+        return out
+
 
 class Bottleneck(nn.Module):
     # Bottleneck in torchvision places the stride for downsampling at 3x3 convolution(self.conv2)
@@ -147,7 +210,7 @@ class Bottleneck(nn.Module):
     ) -> None:
         super().__init__()
         if norm_layer is None:
-            norm_layer = nn.BatchNorm2d
+            norm_layer = CustomBN
         width = int(planes * (base_width / 64.0)) * groups
         # Both self.conv2 and self.downsample layers downsample the input when stride != 1
         self.conv1 = conv1x1(inplanes, width)
@@ -182,6 +245,27 @@ class Bottleneck(nn.Module):
 
         return out
 
+    def meta_forward(self, x, fast_weights):
+        identity = x
+
+        out = self.conv1.meta_forward(x, fast_weights.conv1)
+        out = self.bn1.meta_forward(out, fast_weights.bn1)
+        out = self.relu(out)
+
+        out = self.conv2.meta_forward(out, fast_weights.conv2)
+        out = self.bn2.meta_forward(out, fast_weights.bn2)
+        out = self.relu(out)
+
+        out = self.conv3.meta_forward(out, fast_weights.conv3)
+        out = self.bn3.meta_forward(out, fast_weights.bn3)
+
+        if self.downsample is not None:
+            identity = self.downsample[1](self.downsample[0](x, fast_weights.downsample[0]), fast_weights.downsample[1])
+
+        out += identity
+        out = self.relu(out)
+
+        return out
 
 class ResNet(nn.Module):
     def __init__(
@@ -197,7 +281,7 @@ class ResNet(nn.Module):
     ) -> None:
         super().__init__()
         if norm_layer is None:
-            norm_layer = nn.BatchNorm2d
+            norm_layer = CustomBN
         self._norm_layer = norm_layer
 
         self.inplanes = 64
@@ -213,7 +297,7 @@ class ResNet(nn.Module):
             )
         self.groups = groups
         self.base_width = width_per_group
-        self.conv1 = SoftMaskedConv2d(3, self.inplanes, kernel_size=7, stride=2, padding=3, bias=False)
+        self.conv1 = CustomConv(3, self.inplanes, kernel_size=7, stride=2, padding=3, bias=False)
         self.bn1 = norm_layer(self.inplanes)
         self.relu = nn.ReLU(inplace=True)
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
@@ -222,7 +306,7 @@ class ResNet(nn.Module):
         self.layer3 = self._make_layer(block, 256, layers[2], stride=2, dilate=replace_stride_with_dilation[1])
         self.layer4 = self._make_layer(block, 512, layers[3], stride=2, dilate=replace_stride_with_dilation[2])
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
-        self.fc = SoftMaskedFC(512 * block.expansion, num_classes)
+        self.fc = CustomFC(512 * block.expansion, num_classes)
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
@@ -297,6 +381,25 @@ class ResNet(nn.Module):
 
     def forward(self, x: Tensor) -> Tensor:
         return self._forward_impl(x)
+
+    def meta_forward(self, x, fast_weights):
+        x = self.conv1.meta_forward(x, fast_weights.conv1)
+        x = self.bn1.meta_forward(x, fast_weights.bn1)
+        x = self.relu(x)
+        x = self.maxpool(x)
+        for idx, block in enumerate(self.layer1):
+            x = block.meta_forward(x, fast_weights.layer1[idx])
+        for idx, block in enumerate(self.layer2):
+            x = block.meta_forward(x, fast_weights.layer2[idx])
+        for idx, block in enumerate(self.layer3):
+            x = block.meta_forward(x, fast_weights.layer3[idx])
+        for idx, block in enumerate(self.layer4):
+            x = block.meta_forward(x, fast_weights.layer4[idx])
+
+        x = self.avgpool(x)
+        x = torch.flatten(x, 1)
+        x = self.fc.meta_forward(x, fast_weights.fc)
+        return x
 
 
 def _resnet(
