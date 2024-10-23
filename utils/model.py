@@ -34,6 +34,7 @@ class CustomConv(nn.Conv2d):
         super().__init__(in_channels, out_channels, kernel_size, stride, padding, dilation, groups, bias,
         padding_mode,device, dtype)
         self.mask_weight = nn.Parameter(torch.zeros_like(self.weight))
+        self.mask_weight.requires_grad = False
         self.register_buffer('mask', torch.tensor(False, dtype=torch.bool))
     def forward(self, input):
         if self.mask:
@@ -50,6 +51,7 @@ class CustomFC(nn.Linear):
     def __init__(self, in_features, out_features, bias=True, device=None, dtype=None):
         super().__init__(in_features, out_features, bias, device, dtype)
         self.mask_weight = nn.Parameter(torch.zeros_like(self.weight))
+        self.mask_weight.requires_grad = False
         self.register_buffer('mask', torch.tensor(False, dtype=torch.bool))
     def forward(self, input):
         if self.mask:
@@ -180,7 +182,7 @@ class BasicBlock(nn.Module):
         out = self.bn2.meta_forward(out, fast_weights, name+".bn2")
 
         if self.downsample is not None:
-            identity = self.downsample[1](self.downsample[0](x, fast_weights, name+".downsample.0"), fast_weights, name+".downsample.1")
+            identity = self.downsample[1].meta_forward(self.downsample[0].meta_forward(x, fast_weights, name+".downsample.0"), fast_weights, name+".downsample.1")
 
         out += identity
         out = self.relu(out)
@@ -260,7 +262,7 @@ class Bottleneck(nn.Module):
         out = self.bn3.meta_forward(out, fast_weights, name+".bn3")
 
         if self.downsample is not None:
-            identity = self.downsample[1](self.downsample[0](x, fast_weights, name+".downsample.0"), fast_weights, name+".downsample.1")
+            identity = self.downsample[1].meta_forward(self.downsample[0].meta_forward(x, fast_weights, name+".downsample.0"), fast_weights, name+".downsample.1")
 
         out += identity
         out = self.relu(out)
@@ -398,7 +400,7 @@ class ResNet(nn.Module):
 
         x = self.avgpool(x)
         x = torch.flatten(x, 1)
-        x = self.fc.meta_forward(x, fast_weights.fc)
+        x = self.fc.meta_forward(x, fast_weights, "fc")
         return x
 
 

@@ -23,7 +23,7 @@ class Strategy:
         self.num_epochs = num_epochs
         self.args = args
         self.n_pool = len(Y)
-
+        self.clf = get_model(self.args.pretrained, self.args.architecture, self.num_classes).cuda()
     def query(self, n):
         pass
 
@@ -32,7 +32,8 @@ class Strategy:
 
     def train(self, X_val, Y_val, P_val, verbose=True):
         # Initialize model and optimizer
-        self.clf = get_model(self.args.pretrained, self.args.architecture, self.num_classes).cuda()
+        if self.args.method != "meta":
+            self.clf = get_model(self.args.pretrained, self.args.architecture, self.num_classes).cuda()
         optimizer = optim.Adam(self.clf.parameters(), lr=self.args.lr, weight_decay=self.args.weight_decay)
 
         # Obtain train and validation dataset and loader
@@ -186,15 +187,16 @@ class Strategy:
 
             for batch in tqdm.tqdm(loader_tr, disable=True):
                 # Copy weights
-                fast_weights = dict(self.clf.named_parameters())
+                fast_weights = {name: param for name, param in self.clf.named_parameters() if param.requires_grad}
+                #fast_weights = dict(self.clf.named_parameters())
                 x, y, p, idxs = batch
                 x, y, p, idxs = x.cuda(), y.cuda(), p.cuda(), idxs.cuda()
                 # Take 5 update steps on the training dataset
                 for k in range(5):
                     logits = self.clf.meta_forward(x, fast_weights)
                     loss = criterion(logits, y)
-                    grad = torch.autograd.grad(loss, fast_weights.values)
-                    fast_weights = {name: param - self.args.ls * grad_part for (name, param), grad_part in zip(fast_weights.items(), grad)}
+                    grad = torch.autograd.grad(loss, list(fast_weights.values()))
+                    fast_weights = {name: param - self.args.lr * grad_part for (name, param), grad_part in zip(fast_weights.items(), grad)}
                 # Compute loss on query (meta) dataset
                 x_meta, y_meta, p_meta, idxs_meta = next(iter(loader_tr_meta))
                 x_meta, y_meta, p_meta, idxs_meta = x_meta.cuda(), y_meta.cuda(), p_meta.cuda(), idxs_meta.cuda()
@@ -208,7 +210,7 @@ class Strategy:
                 ce_loss_meter.update(torch.mean(meta_loss).detach().item(), x.size(0))
                 train_avg_acc, train_minority_acc, train_majority_acc = update_meter(train_avg_acc, train_minority_acc,
                                                                                      train_majority_acc,
-                                                                                     logits_meta.detach(), y, p)
+                                                                                     logits_meta.detach(), y_meta, p_meta)
 
             self.clf.eval()
             val_minority_acc, val_majority_acc, val_avg_acc = self.evaluate_model(loader_val)
