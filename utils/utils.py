@@ -28,6 +28,10 @@ def parse_args():
     parser.add_argument('--nEnd', help='total number of points to query', type=int, default=10000)
     # Method Args
     parser.add_argument('--method', help='which method to use: [none, meta, prune]', type=str, default='none')
+    # MAML Args
+    parser.add_argument('--inner_steps', help='Number of inner steps for meta learning (usually 1-5)', type=int, default=5)
+    parser.add_argument('--order', help='first or second order derivaties for meta-learning', type=str, default="first")
+
     # Random Seed
     parser.add_argument('--seed', help='random seed', type=int, default=0)
     # Save Directory

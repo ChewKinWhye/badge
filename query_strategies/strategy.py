@@ -185,21 +185,23 @@ class Strategy:
                                                                                    AverageMeter(), AverageMeter()
             start = time.time()
 
-            for batch in tqdm.tqdm(loader_tr, disable=True):
+            for batch in tqdm.tqdm(loader_tr_meta, disable=True):
                 # Copy weights
                 fast_weights = {name: param for name, param in self.clf.named_parameters() if param.requires_grad}
-                #fast_weights = dict(self.clf.named_parameters())
-                x, y, p, idxs = batch
-                x, y, p, idxs = x.cuda(), y.cuda(), p.cuda(), idxs.cuda()
+                x_meta, y_meta, p_meta, idxs_meta = batch
+                x_meta, y_meta, p_meta, idxs_meta = x_meta.cuda(), y_meta.cuda(), p_meta.cuda(), idxs_meta.cuda()
                 # Take 5 update steps on the training dataset
-                for k in range(5):
+                for k in range(self.args.inner_steps):
+                    x, y, p, idxs = next(iter(loader_tr))
+                    x, y, p, idxs = x.cuda(), y.cuda(), p.cuda(), idxs.cuda()
                     logits = self.clf.meta_forward(x, fast_weights)
                     loss = criterion(logits, y)
-                    grad = torch.autograd.grad(loss, list(fast_weights.values()))
+                    if self.args.order == "first":
+                        grad = torch.autograd.grad(loss, list(fast_weights.values()))
+                    else:
+                        grad = torch.autograd.grad(loss, list(fast_weights.values()), create_graph=True)
                     fast_weights = {name: param - self.args.lr * grad_part for (name, param), grad_part in zip(fast_weights.items(), grad)}
                 # Compute loss on query (meta) dataset
-                x_meta, y_meta, p_meta, idxs_meta = next(iter(loader_tr_meta))
-                x_meta, y_meta, p_meta, idxs_meta = x_meta.cuda(), y_meta.cuda(), p_meta.cuda(), idxs_meta.cuda()
                 logits_meta = self.clf.meta_forward(x_meta, fast_weights)
                 meta_loss = criterion(logits_meta, y_meta)
                 optimizer.zero_grad()
@@ -207,13 +209,25 @@ class Strategy:
                 optimizer.step()
 
                 # Monitor training stats
-                ce_loss_meter.update(torch.mean(meta_loss).detach().item(), x.size(0))
+                ce_loss_meter.update(torch.mean(meta_loss).detach().item(), x_meta.size(0))
                 train_avg_acc, train_minority_acc, train_majority_acc = update_meter(train_avg_acc, train_minority_acc,
                                                                                      train_majority_acc,
                                                                                      logits_meta.detach(), y_meta, p_meta)
 
+            # Meta Evaluation, evaluate after updating on train dataset
             self.clf.eval()
-            val_minority_acc, val_majority_acc, val_avg_acc = self.evaluate_model(loader_val)
+            clf_copy = copy.deepcopy(self.clf)
+            for k in range(5):
+                x, y, p, idxs = next(iter(loader_tr))
+                x, y, p, idxs = x.cuda(), y.cuda(), p.cuda(), idxs.cuda()
+                logits = clf_copy(x)
+                loss = criterion(logits, y)
+                grad = torch.autograd.grad(loss, clf_copy.parameters())
+                with torch.no_grad():  # Ensure no gradients are tracked during this update
+                    for param, grad in zip(clf_copy.parameters(), grad):
+                        param -= self.args.lr * grad
+            val_minority_acc, val_majority_acc, val_avg_acc = self.evaluate_model(loader_val, clf_copy)
+
             # Save best model based on worst group accuracy
             if val_avg_acc > best_val_avg_acc:
                 torch.save(self.clf.state_dict(), os.path.join(self.args.save_dir, "ckpt.pt"))
@@ -233,17 +247,19 @@ class Strategy:
         self.clf.load_state_dict(state_dict, strict=False)
         return state_dict
 
-    def evaluate_model(self, loader):
-        self.clf.eval()
+    def evaluate_model(self, loader, model=None):
+        if model is None:
+            model = self.clf
+        model.eval()
         minority_acc, majority_acc, avg_acc = AverageMeter(), AverageMeter(), AverageMeter()
 
         with torch.no_grad():
             for x, y, p, idxs in tqdm.tqdm(loader, disable=True):
                 x, y, p = x.cuda(), y.cuda(), p.cuda()
-                logits = self.clf(x)
+                logits = model(x)
                 avg_acc, minority_acc, majority_acc = update_meter(avg_acc, minority_acc, majority_acc, logits, y, p)
 
-        self.clf.train()
+        model.train()
         return minority_acc.avg, majority_acc.avg, avg_acc.avg
 
     def predict(self, X, Y):

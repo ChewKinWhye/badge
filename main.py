@@ -51,13 +51,13 @@ if __name__ == "__main__":
         # Query
         query_idxs = strategy.query(args.nQuery)
 
-        # Draw Conclusions: Gain additional information, this step currently does not influence the next iteration of training
+        # Draw Conclusions: Gain additional information
         if args.method == "meta":
             strategy.train_MAML([X_tr[i] for i in query_idxs], Y_tr[query_idxs], P_tr[query_idxs], X_val, Y_val, P_val)
         elif args.method == "mask":
+            # This step currently does not influence the next iteration of training
             strategy.train_prune([X_tr[i] for i in query_idxs], Y_tr[query_idxs], P_tr[query_idxs], X_val, Y_val, P_val)
         print(f"Minority, Majority, Average Test Accuracy: {strategy.evaluate_model(loader_test)}")
-
 
         # Next Round: Train and Test
         labelled_mask[query_idxs] = True
