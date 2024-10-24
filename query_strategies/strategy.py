@@ -215,7 +215,6 @@ class Strategy:
                                                                                      logits_meta.detach(), y_meta, p_meta)
 
             # Meta Evaluation, evaluate after updating on train dataset
-            self.clf.eval()
             clf_copy = copy.deepcopy(self.clf)
             for k in range(5):
                 x, y, p, idxs = next(iter(loader_tr))
@@ -226,6 +225,7 @@ class Strategy:
                 with torch.no_grad():  # Ensure no gradients are tracked during this update
                     for param, grad in zip(clf_copy.parameters(), grad):
                         param -= self.args.lr * grad
+            self.clf.eval()
             val_minority_acc, val_majority_acc, val_avg_acc = self.evaluate_model(loader_val, clf_copy)
 
             # Save best model based on worst group accuracy
