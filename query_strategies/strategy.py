@@ -30,10 +30,11 @@ class Strategy:
     def update(self, labelled_mask):
         self.labelled_mask = labelled_mask
 
-    def train(self, X_val, Y_val, P_val, verbose=True):
+    def train(self, X_val, Y_val, P_val, state_dict=None, verbose=True):
         # Initialize model and optimizer
-        if self.args.method != "meta":
-            self.clf = get_model(self.args.pretrained, self.args.architecture, self.num_classes).cuda()
+        self.clf = get_model(self.args.pretrained, self.args.architecture, self.num_classes).cuda()
+        if state_dict is not None:
+            self.clf.load_state_dict(state_dict, strict=False)
         optimizer = optim.Adam(self.clf.parameters(), lr=self.args.lr, weight_decay=self.args.weight_decay)
 
         # Obtain train and validation dataset and loader
@@ -92,73 +93,6 @@ class Strategy:
         self.clf.load_state_dict(state_dict, strict=False)
         return state_dict
 
-    def train_prune(self, X_query, Y_query, P_query, X_val, Y_val, P_val, verbose=True):
-        # Freeze all weight paramters since we are only updating the masks
-        for name, param in self.clf.named_parameters():
-            if "mask_weight" in name or "bn" in name:
-                param.requires_grad = True
-            else:
-                param.requires_grad = False
-        for name, buff in self.clf.named_buffers():
-            if "mask" in name:
-                buff.fill_(True)
-
-        optimizer = optim.Adam(self.clf.parameters(), lr=self.args.lr, weight_decay=self.args.weight_decay)
-
-        # Obtain train and validation dataset and loader, dataset to train the mask is simply the queried points
-        loader_tr = DataLoader(self.handler(X_query, torch.Tensor(Y_query).long(), torch.Tensor(P_query).long(), isTrain=True),
-                               shuffle=True, batch_size=self.args.batch_size)
-        loader_val = DataLoader(self.handler(X_val, torch.Tensor(Y_val).long(), torch.Tensor(P_val).long(), isTrain=False),
-                               shuffle=False, batch_size=self.args.batch_size)
-
-        criterion = torch.nn.CrossEntropyLoss()
-
-        # --- Train Start ---
-        best_val_avg_acc, best_epoch = -1, None
-        for epoch in range(self.num_epochs):
-            self.clf.train()
-            # Track metrics
-            ce_loss_meter, train_minority_acc, train_majority_acc, train_avg_acc = AverageMeter(), AverageMeter(), \
-                                                                                   AverageMeter(), AverageMeter()
-            start = time.time()
-            for batch in tqdm.tqdm(loader_tr, disable=True):
-                x, y, p, idxs = batch
-                x, y, p, idxs = x.cuda(), y.cuda(), p.cuda(), idxs.cuda()
-                optimizer.zero_grad()
-
-                # Cross Entropy Loss
-                logits = self.clf(x) # Set temperature as 1 allows for soft masking. For binary mask, temperature should increase with epoch
-                loss = criterion(logits, y)
-
-                loss.backward()
-                optimizer.step()
-
-                # Monitor training stats
-                ce_loss_meter.update(torch.mean(loss).detach().item(), x.size(0))
-                train_avg_acc, train_minority_acc, train_majority_acc = update_meter(train_avg_acc, train_minority_acc,
-                                                                                     train_majority_acc,
-                                                                                     logits.detach(), y, p)
-
-            self.clf.eval()
-            val_minority_acc, val_majority_acc, val_avg_acc = self.evaluate_model(loader_val)
-            # Save best model based on worst group accuracy
-            if val_avg_acc > best_val_avg_acc:
-                torch.save(self.clf.state_dict(), os.path.join(self.args.save_dir, "ckpt.pt"))
-                best_val_avg_acc = val_avg_acc
-                best_epoch = epoch
-            # Print stats
-            if verbose:
-                print(f"Epoch {epoch} Loss: {ce_loss_meter.avg:.3f} Time Taken: {time.time() - start:.3f}")
-                print(f"Train Average Accuracy: {train_avg_acc.avg:.3f} Train Majority Accuracy: {train_majority_acc.avg:.3f} "
-                    f"Train Minority Accuracy: {train_minority_acc.avg:.3f}")
-                print(f"Val Average Accuracy: {val_avg_acc:.3f} Val Majority Accuracy: {val_majority_acc:.3f} "
-                      f"Val Minority Accuracy: {val_minority_acc:.3f}")
-        # --- Train End ---
-        print(f'Best validation accuracy: {best_val_avg_acc:.3f} at epoch {best_epoch}')
-        state_dict = torch.load(os.path.join(self.args.save_dir, "ckpt.pt"))
-        self.clf = get_model(self.args.pretrained, self.args.architecture, self.num_classes).cuda()
-        self.clf.load_state_dict(state_dict, strict=False)
-        return state_dict
 
     def train_MAML(self, X_query, Y_query, P_query, X_val, Y_val, P_val, verbose=True):
         # Initialize model and optimizer
@@ -216,7 +150,7 @@ class Strategy:
 
             # Meta Evaluation, evaluate after updating on train dataset
             clf_copy = copy.deepcopy(self.clf)
-            for k in range(5):
+            for k in range(self.args.inner_steps):
                 x, y, p, idxs = next(iter(loader_tr))
                 x, y, p, idxs = x.cuda(), y.cuda(), p.cuda(), idxs.cuda()
                 logits = clf_copy(x)
