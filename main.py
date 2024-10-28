@@ -53,7 +53,7 @@ if __name__ == "__main__":
 
         # Draw Conclusions: Gain additional information
         if args.method == "meta":
-            state_dict = strategy.train_MAML([X_tr[i] for i in query_idxs], Y_tr[query_idxs], P_tr[query_idxs], X_val, Y_val, P_val)
+            state_dict = strategy.train_MAML([X_tr[i] for i in query_idxs], Y_tr[query_idxs], P_tr[query_idxs], X_val, Y_val, P_val, verbose=False)
 
         print(f"Minority, Majority, Average Test Accuracy: {strategy.evaluate_model(loader_test)}")
 
