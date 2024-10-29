@@ -107,19 +107,32 @@ def update_indicator(indicator, idxs, logits, y):
 #     return model
 
 def get_output(m, x, model):
-    x = m.conv1(x)
-    x = m.bn1(x)
-    x = m.relu(x)
-    x = m.maxpool(x)
-    x = m.layer1(x)
-    x = m.layer2(x)
-    x = m.layer3(x)
-    x = m.layer4(x)
-    x = m.avgpool(x)
-    x = torch.flatten(x, 1)
     if model == "resnet18" or model == "resnet50":
+        x = m.conv1(x)
+        x = m.bn1(x)
+        x = m.relu(x)
+        x = m.maxpool(x)
+        x = m.layer1(x)
+        x = m.layer2(x)
+        x = m.layer3(x)
+        x = m.layer4(x)
+        x = m.avgpool(x)
+        x = torch.flatten(x, 1)
         p = m.fc(x)
-    else:
-        # Final linear in ViT is called heads
-        p = m.heads(x)
-    return p, x
+        return p, x
+    else: #ViT
+        x = m._process_input(x)
+        n = x.shape[0]
+
+        # Expand the class token to the full batch
+        batch_class_token = m.class_token.expand(n, -1, -1)
+        x = torch.cat([batch_class_token, x], dim=1)
+
+        x = m.encoder(x)
+
+        # Classifier "token" as used by standard language architectures
+        p = x[:, 0]
+
+        x = m.heads(p)
+
+        return p, x
