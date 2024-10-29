@@ -23,7 +23,8 @@ class Strategy:
         self.num_epochs = num_epochs
         self.args = args
         self.n_pool = len(Y)
-        self.clf, self.tokenizer = get_model(self.args.pretrained, self.args.architecture, self.num_classes).cuda()
+        self.clf, self.tokenizer = get_model(self.args.pretrained, self.args.architecture, self.num_classes)
+        self.clf, self.tokenizer = self.clf.cuda(), self.tokenizer.cuda()
     def query(self, n):
         pass
 
@@ -32,7 +33,8 @@ class Strategy:
 
     def train(self, X_val, Y_val, P_val, state_dict=None, verbose=True):
         # Initialize model and optimizer
-        self.clf, _ = get_model(self.args.pretrained, self.args.architecture, self.num_classes).cuda()
+        self.clf, _ = get_model(self.args.pretrained, self.args.architecture, self.num_classes)
+        self.clf = self.clf.cuda()
         if state_dict is not None:
             self.clf.load_state_dict(state_dict)
         optimizer = optim.Adam(self.clf.parameters(), lr=self.args.lr, weight_decay=self.args.weight_decay)
@@ -89,14 +91,16 @@ class Strategy:
         # --- Train End ---
         print(f'Best validation accuracy: {best_val_avg_acc:.3f} at epoch {best_epoch}')
         state_dict = torch.load(os.path.join(self.args.save_dir, "ckpt.pt"))
-        self.clf, _ = get_model(self.args.pretrained, self.args.architecture, self.num_classes).cuda()
+        self.clf, _ = get_model(self.args.pretrained, self.args.architecture, self.num_classes)
+        self.clf = self.clf.cuda()
         self.clf.load_state_dict(state_dict)
         return state_dict
 
 
     def train_MAML(self, X_query, Y_query, P_query, X_val, Y_val, P_val, verbose=True):
         # Initialize model and optimizer
-        self.clf, _ = get_model(self.args.pretrained, self.args.architecture, self.num_classes).cuda()
+        self.clf, _ = get_model(self.args.pretrained, self.args.architecture, self.num_classes)
+        self.clf = self.clf.cuda()
         optimizer = optim.Adam(self.clf.parameters(), lr=self.args.lr, weight_decay=self.args.weight_decay)
 
         # Obtain train and validation dataset and loader
@@ -177,7 +181,8 @@ class Strategy:
         # --- Train End ---
         print(f'Best validation accuracy: {best_val_avg_acc:.3f} at epoch {best_epoch}')
         state_dict = torch.load(os.path.join(self.args.save_dir, "ckpt.pt"))
-        self.clf, _ = get_model(self.args.pretrained, self.args.architecture, self.num_classes).cuda()
+        self.clf, _ = get_model(self.args.pretrained, self.args.architecture, self.num_classes)
+        self.clf = self.clf.cuda()
         self.clf.load_state_dict(state_dict, strict=False)
         return state_dict
 
