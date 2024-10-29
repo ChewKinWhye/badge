@@ -23,7 +23,7 @@ def get_model(pretrained, model, num_classes):
         net.fc = torch.nn.Linear(net.fc.in_features, num_classes)
     elif model == "ViT":
         net = vit_b_16(weights=weights)
-        net.heads = torch.nn.Linear(net.heads.in_features, num_classes)
+        net.heads[0] = torch.nn.Linear(net.heads[0].in_features, num_classes)
     elif model == "BERT":
         # Do not support non-pretrained BERT since it does not make sense
         net = BertForSequenceClassification.from_pretrained("bert-base-uncased", num_labels=num_classes)
