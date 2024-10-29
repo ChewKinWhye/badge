@@ -1,13 +1,11 @@
 from torchvision.models import resnet18, ResNet18_Weights, resnet50, ResNet50_Weights, vit_b_16, ViT_B_16_Weights
 from transformers import BertModel, BertTokenizer, BertForSequenceClassification
 import torch
-import os
 
 def sigmoid(x):
     return 1/(1+torch.exp(-x))
 
 def get_model(pretrained, model, num_classes):
-    os.environ['TORCH_HOME'] = 'models/resnet'  # setting the environment variable
     weights = {"resnet18": ResNet18_Weights,
                "resnet50": ResNet50_Weights,
                "ViT": ViT_B_16_Weights}
