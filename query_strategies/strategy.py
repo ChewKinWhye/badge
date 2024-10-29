@@ -225,8 +225,10 @@ class Strategy:
         data_loader = DataLoader(self.handler(X, torch.Tensor(Y).long(), torch.Tensor(Y).long(), isTrain=False, target_resolution=self.target_resolution),
                                  shuffle=False, batch_size=self.args.batch_size)
         probs = torch.zeros([len(Y), len(np.unique(self.Y))])
-        embedding = torch.zeros([len(Y), 512])
-
+        if self.args.architecture == "resnet18" or self.args.architecture == "resnet50":
+            embedding = torch.zeros([len(Y), 512])
+        else:
+            embedding = torch.zeros([len(Y), 768])
         with torch.no_grad():
             for x, y, _, idxs in data_loader:
                 x, y = Variable(x.cuda()), Variable(y.cuda())

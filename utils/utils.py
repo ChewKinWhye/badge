@@ -131,8 +131,8 @@ def get_output(m, x, model):
         x = m.encoder(x)
 
         # Classifier "token" as used by standard language architectures
-        p = x[:, 0]
+        x = x[:, 0]
 
-        x = m.heads(p)
+        p = m.heads(x)
 
         return p, x
