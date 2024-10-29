@@ -24,7 +24,9 @@ class Strategy:
         self.args = args
         self.n_pool = len(Y)
         self.clf, self.tokenizer = get_model(self.args.pretrained, self.args.architecture, self.num_classes)
-        self.clf, self.tokenizer = self.clf.cuda(), self.tokenizer.cuda()
+        self.clf = self.clf.cuda()
+        if self.tokenizer is not None:
+            self.tokenizer = self.tokenizer.cuda()
     def query(self, n):
         pass
 
