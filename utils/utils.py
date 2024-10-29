@@ -10,7 +10,7 @@ import os
 def parse_args():
     parser = argparse.ArgumentParser()
     # Model Args
-    parser.add_argument('--architecture', help='model - resnet18, resnet50', type=str, default='resnet18')
+    parser.add_argument('--architecture', help='model - resnet18, resnet50, ViT, BERT', type=str, default='resnet18')
     parser.add_argument("--pretrained", type=int, default=0, help="Use pretrained model")
     # Data Args
     parser.add_argument('--data_dir', help='data path', type=str, default='/hpctmp/e0200920')
@@ -90,23 +90,23 @@ def update_indicator(indicator, idxs, logits, y):
     indicator[idxs] = correct_batch.cpu()
     return indicator
 
-def load_model(pretrained, architecture, num_classes):
-    os.environ['TORCH_HOME'] = 'models/resnet'  # setting the environment variable
-    if architecture == "resnet18":
-        if pretrained:
-            model = torchvision.models.resnet18(weights=ResNet18_Weights.IMAGENET1K_V1)
-        else:
-            model = torchvision.models.resnet18(weights=None)
-    else: # resnet50
-        if pretrained:
-            model = torchvision.models.resnet50(weights=ResNet50_Weights.IMAGENET1K_V1)
-        else:
-            model = torchvision.models.resnet50(weights=None)
-    d = model.fc.in_features
-    model.fc = torch.nn.Linear(d, num_classes)
-    return model
+# def load_model(pretrained, architecture, num_classes):
+#     os.environ['TORCH_HOME'] = 'models/resnet'  # setting the environment variable
+#     if architecture == "resnet18":
+#         if pretrained:
+#             model = torchvision.models.resnet18(weights=ResNet18_Weights.IMAGENET1K_V1)
+#         else:
+#             model = torchvision.models.resnet18(weights=None)
+#     else: # resnet50
+#         if pretrained:
+#             model = torchvision.models.resnet50(weights=ResNet50_Weights.IMAGENET1K_V1)
+#         else:
+#             model = torchvision.models.resnet50(weights=None)
+#     d = model.fc.in_features
+#     model.fc = torch.nn.Linear(d, num_classes)
+#     return model
 
-def get_output(m, x):
+def get_output(m, x, model):
     x = m.conv1(x)
     x = m.bn1(x)
     x = m.relu(x)
@@ -117,5 +117,9 @@ def get_output(m, x):
     x = m.layer4(x)
     x = m.avgpool(x)
     x = torch.flatten(x, 1)
-    p = m.fc(x)
+    if model == "resnet18" or model == "resnet50":
+        p = m.fc(x)
+    else:
+        # Final linear in ViT is called heads
+        p = m.heads(x)
     return p, x

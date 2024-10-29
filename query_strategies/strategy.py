@@ -1,6 +1,6 @@
 from torch.utils.data import DataLoader
 from torch.autograd import Variable
-from utils.utils import AverageMeter, update_meter, load_model, get_output
+from utils.utils import AverageMeter, update_meter, get_output
 import time
 import tqdm
 from utils.model import get_model
@@ -23,7 +23,7 @@ class Strategy:
         self.num_epochs = num_epochs
         self.args = args
         self.n_pool = len(Y)
-        self.clf = get_model(self.args.pretrained, self.args.architecture, self.num_classes).cuda()
+        self.clf, self.tokenizer = get_model(self.args.pretrained, self.args.architecture, self.num_classes).cuda()
     def query(self, n):
         pass
 
@@ -32,9 +32,9 @@ class Strategy:
 
     def train(self, X_val, Y_val, P_val, state_dict=None, verbose=True):
         # Initialize model and optimizer
-        self.clf = get_model(self.args.pretrained, self.args.architecture, self.num_classes).cuda()
+        self.clf, _ = get_model(self.args.pretrained, self.args.architecture, self.num_classes).cuda()
         if state_dict is not None:
-            self.clf.load_state_dict(state_dict, strict=False)
+            self.clf.load_state_dict(state_dict)
         optimizer = optim.Adam(self.clf.parameters(), lr=self.args.lr, weight_decay=self.args.weight_decay)
 
         # Obtain train and validation dataset and loader
@@ -89,14 +89,14 @@ class Strategy:
         # --- Train End ---
         print(f'Best validation accuracy: {best_val_avg_acc:.3f} at epoch {best_epoch}')
         state_dict = torch.load(os.path.join(self.args.save_dir, "ckpt.pt"))
-        self.clf = get_model(self.args.pretrained, self.args.architecture, self.num_classes).cuda()
-        self.clf.load_state_dict(state_dict, strict=False)
+        self.clf, _ = get_model(self.args.pretrained, self.args.architecture, self.num_classes).cuda()
+        self.clf.load_state_dict(state_dict)
         return state_dict
 
 
     def train_MAML(self, X_query, Y_query, P_query, X_val, Y_val, P_val, verbose=True):
         # Initialize model and optimizer
-        self.clf = get_model(self.args.pretrained, self.args.architecture, self.num_classes).cuda()
+        self.clf, _ = get_model(self.args.pretrained, self.args.architecture, self.num_classes).cuda()
         optimizer = optim.Adam(self.clf.parameters(), lr=self.args.lr, weight_decay=self.args.weight_decay)
 
         # Obtain train and validation dataset and loader
@@ -177,7 +177,7 @@ class Strategy:
         # --- Train End ---
         print(f'Best validation accuracy: {best_val_avg_acc:.3f} at epoch {best_epoch}')
         state_dict = torch.load(os.path.join(self.args.save_dir, "ckpt.pt"))
-        self.clf = get_model(self.args.pretrained, self.args.architecture, self.num_classes).cuda()
+        self.clf, _ = get_model(self.args.pretrained, self.args.architecture, self.num_classes).cuda()
         self.clf.load_state_dict(state_dict, strict=False)
         return state_dict
 
@@ -222,7 +222,7 @@ class Strategy:
         with torch.no_grad():
             for x, y, _, idxs in data_loader:
                 x, y = Variable(x.cuda()), Variable(y.cuda())
-                p, emb = get_output(self.clf, x)
+                p, emb = get_output(self.clf, x, self.args.architecture)
                 p = F.softmax(p, dim=1)
                 probs[idxs] = p.cpu().data
                 embedding[idxs] = emb.data.cpu()
