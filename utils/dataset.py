@@ -20,6 +20,7 @@ def log_data(x, y, p, handler, dataset_name, dataset_split):
 def get_data(dataset, data_dir, spurious_strength, seed):
     data_dir = os.path.join(data_dir, dataset)
     if dataset == "mcdominoes":
+        target_resolution = (512, 256)
         num_classes = 10
         num_attributes = 10
         handler = MCDOMINOES
@@ -27,12 +28,14 @@ def get_data(dataset, data_dir, spurious_strength, seed):
             get_mcdominoes(data_dir, spurious_strength, seed)
         X_tr, X_val, X_te = [i for i in X_tr], [i for i in X_val], [i for i in X_te]
     elif dataset == "spawrious":
+        target_resolution = (512, 512)
         num_classes = 4
         num_attributes = 4
         handler = SPAWRIOUS
         X_tr, Y_tr, P_tr, X_val, Y_val, P_val, X_te, Y_te, P_te = \
             get_spawrious(data_dir, spurious_strength, seed)
     elif dataset == "spuco":
+        target_resolution = (512, 512)
         num_classes = 4
         num_attributes = 4
         handler = SPUCO
@@ -45,4 +48,4 @@ def get_data(dataset, data_dir, spurious_strength, seed):
     log_data(X_tr, Y_tr, P_tr, handler, dataset, "Train Dataset")
     log_data(X_val, Y_val, P_val, handler, dataset, "Validation Dataset")
     log_data(X_te, Y_te, P_te, handler, dataset, "Test Dataset")
-    return X_tr, Y_tr, P_tr, X_val, Y_val, P_val, X_te, Y_te, P_te, num_classes, num_attributes, handler
+    return X_tr, Y_tr, P_tr, X_val, Y_val, P_val, X_te, Y_te, P_te, num_classes, num_attributes, handler, target_resolution

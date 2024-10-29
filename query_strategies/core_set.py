@@ -3,8 +3,8 @@ from .strategy import Strategy
 import numpy as np
 
 class CoreSet(Strategy):
-    def __init__(self, X, Y, P, labelled_mask, handler, num_classes, num_epochs, args, tor=1e-4):
-        super(CoreSet, self).__init__(X, Y, P, labelled_mask, handler, num_classes, num_epochs, args)
+    def __init__(self, X, Y, P, labelled_mask, handler, num_classes, num_epochs, target_resolution, args, tor=1e-4):
+        super(CoreSet, self).__init__(X, Y, P, labelled_mask, handler, num_classes, num_epochs, target_resolution, args)
         self.tor = tor
 
     def furthest_first(self, X, X_set, n):

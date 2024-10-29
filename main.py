@@ -15,8 +15,10 @@ if __name__ == "__main__":
     set_seed(args.seed)
 
     # Load Dataset (Numpy Array)
-    X_tr, Y_tr, P_tr, X_val, Y_val, P_val, X_te, Y_te, P_te, num_classes, _, handler = get_data(args.dataset, args.data_dir, args.spurious_strength,
+    X_tr, Y_tr, P_tr, X_val, Y_val, P_val, X_te, Y_te, P_te, num_classes, _, handler, target_resolution = get_data(args.dataset, args.data_dir, args.spurious_strength,
                                                args.seed)
+    if args.architecture == "ViT":
+        target_resolution = (224, 224)
 
     # Initial labelled pool, Randomly select nStart indices to label
     labelled_mask = np.zeros(len(X_tr), dtype=bool)
@@ -24,13 +26,13 @@ if __name__ == "__main__":
 
     # Acquisition Algorithm
     if args.alg == 'rand': # random sampling
-        strategy = RandomSampling(X_tr, Y_tr, P_tr, labelled_mask, handler, num_classes, args.num_epochs, args)
+        strategy = RandomSampling(X_tr, Y_tr, P_tr, labelled_mask, handler, num_classes, args.num_epochs, target_resolution, args)
     elif args.alg == 'conf': # confidence-based sampling
-        strategy = LeastConfidence(X_tr, Y_tr, P_tr, labelled_mask, handler, num_classes, args.num_epochs, args)
+        strategy = LeastConfidence(X_tr, Y_tr, P_tr, labelled_mask, handler, num_classes, args.num_epochs, target_resolution, args)
     elif args.alg == 'badge': # batch active learning by diverse gradient embeddings
-        strategy = BadgeSampling(X_tr, Y_tr, P_tr, labelled_mask, handler, num_classes, args.num_epochs, args)
+        strategy = BadgeSampling(X_tr, Y_tr, P_tr, labelled_mask, handler, num_classes, args.num_epochs, target_resolution, args)
     elif args.alg == 'coreset': # coreset sampling
-        strategy = CoreSet(X_tr, Y_tr, P_tr, labelled_mask, handler, num_classes, args.num_epochs, args)
+        strategy = CoreSet(X_tr, Y_tr, P_tr, labelled_mask, handler, num_classes, args.num_epochs, target_resolution, args)
     else:
         print('Choose a valid acquisition function.')
         raise ValueError
@@ -38,9 +40,8 @@ if __name__ == "__main__":
     # Stats
     NUM_ROUNDS = (args.nEnd - args.nStart) // args.nQuery
     test_average_acc, test_minority_acc, test_majority_acc = np.zeros(NUM_ROUNDS+1), np.zeros(NUM_ROUNDS+1), np.zeros(NUM_ROUNDS+1)
-    loader_test = DataLoader(handler(X_te, torch.Tensor(Y_te).long(), torch.Tensor(P_te).long(), isTrain=False),
+    loader_test = DataLoader(handler(X_te, torch.Tensor(Y_te).long(), torch.Tensor(P_te).long(), isTrain=False, target_resolution=target_resolution),
                             shuffle=False, batch_size=args.batch_size)
-
     # Round 0 Train and Test
     strategy.train(X_val, Y_val, P_val, verbose=True) # Print out first round of training
     test_minority_acc[0], test_majority_acc[0], test_average_acc[0] = strategy.evaluate_model(loader_test)

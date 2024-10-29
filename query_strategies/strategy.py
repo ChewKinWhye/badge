@@ -13,7 +13,7 @@ import copy
 import torch.autograd as autograd
 
 class Strategy:
-    def __init__(self, X, Y, P, labelled_mask, handler, num_classes, num_epochs, args):
+    def __init__(self, X, Y, P, labelled_mask, handler, num_classes, num_epochs, target_resolution, args):
         self.X = X
         self.Y = Y
         self.P = P
@@ -21,6 +21,7 @@ class Strategy:
         self.handler = handler
         self.num_classes = num_classes
         self.num_epochs = num_epochs
+        self.target_resolution = target_resolution
         self.args = args
         self.n_pool = len(Y)
         self.clf, self.tokenizer = get_model(self.args.pretrained, self.args.architecture, self.num_classes)
@@ -43,9 +44,9 @@ class Strategy:
 
         # Obtain train and validation dataset and loader
         idxs_train = np.arange(self.n_pool)[self.labelled_mask].astype(int)
-        loader_tr = DataLoader(self.handler([self.X[i] for i in idxs_train], torch.Tensor(self.Y[idxs_train]).long(), torch.Tensor(self.P[idxs_train]).long(), isTrain=True),
+        loader_tr = DataLoader(self.handler([self.X[i] for i in idxs_train], torch.Tensor(self.Y[idxs_train]).long(), torch.Tensor(self.P[idxs_train]).long(), isTrain=True, target_resolution=self.target_resolution),
                                shuffle=True, batch_size=self.args.batch_size)
-        loader_val = DataLoader(self.handler(X_val, torch.Tensor(Y_val).long(), torch.Tensor(P_val).long(), isTrain=False),
+        loader_val = DataLoader(self.handler(X_val, torch.Tensor(Y_val).long(), torch.Tensor(P_val).long(), isTrain=False, target_resolution=self.target_resolution),
                                shuffle=False, batch_size=self.args.batch_size)
 
         criterion = torch.nn.CrossEntropyLoss()
@@ -107,11 +108,11 @@ class Strategy:
 
         # Obtain train and validation dataset and loader
         idxs_train = np.arange(self.n_pool)[self.labelled_mask].astype(int)
-        loader_tr = DataLoader(self.handler([self.X[i] for i in idxs_train], torch.Tensor(self.Y[idxs_train]).long(), torch.Tensor(self.P[idxs_train]).long(), isTrain=True),
+        loader_tr = DataLoader(self.handler([self.X[i] for i in idxs_train], torch.Tensor(self.Y[idxs_train]).long(), torch.Tensor(self.P[idxs_train]).long(), isTrain=True, target_resolution=self.target_resolution),
                                shuffle=True, batch_size=self.args.batch_size)
-        loader_tr_meta = DataLoader(self.handler(X_query, torch.Tensor(Y_query).long(), torch.Tensor(P_query).long(), isTrain=True),
+        loader_tr_meta = DataLoader(self.handler(X_query, torch.Tensor(Y_query).long(), torch.Tensor(P_query).long(), isTrain=True, target_resolution=self.target_resolution),
                                shuffle=True, batch_size=self.args.batch_size)
-        loader_val = DataLoader(self.handler(X_val, torch.Tensor(Y_val).long(), torch.Tensor(P_val).long(), isTrain=False),
+        loader_val = DataLoader(self.handler(X_val, torch.Tensor(Y_val).long(), torch.Tensor(P_val).long(), isTrain=False, target_resolution=self.target_resolution),
                                shuffle=False, batch_size=self.args.batch_size)
 
         criterion = torch.nn.CrossEntropyLoss()
@@ -206,7 +207,7 @@ class Strategy:
     def predict(self, X, Y):
         self.clf.eval()
         # Spurious Attribute does not matter
-        data_loader = DataLoader(self.handler(X, torch.Tensor(Y).long(), torch.Tensor(Y).long(), isTrain=False),
+        data_loader = DataLoader(self.handler(X, torch.Tensor(Y).long(), torch.Tensor(Y).long(), isTrain=False, target_resolution=self.target_resolution),
                                shuffle=False, batch_size=self.args.batch_size)
 
         P = torch.zeros(len(Y)).long()
@@ -221,7 +222,7 @@ class Strategy:
     def predict_output(self, X, Y):
         self.clf.eval()
         # Spurious Attribute does not matter
-        data_loader = DataLoader(self.handler(X, torch.Tensor(Y).long(), torch.Tensor(Y).long(), isTrain=False),
+        data_loader = DataLoader(self.handler(X, torch.Tensor(Y).long(), torch.Tensor(Y).long(), isTrain=False, target_resolution=self.target_resolution),
                                  shuffle=False, batch_size=self.args.batch_size)
         probs = torch.zeros([len(Y), len(np.unique(self.Y))])
         embedding = torch.zeros([len(Y), 512])
