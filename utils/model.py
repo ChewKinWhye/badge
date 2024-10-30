@@ -24,6 +24,26 @@ def get_model(pretrained, model, num_classes):
     elif model == "ViT":
         net = vit_b_16(weights=weights)
         net.heads[0] = torch.nn.Linear(net.heads[0].in_features, num_classes)
+        # Have to replace _scaled_dot_product_efficient_attention with CustomScaledDotProductAttention
+        for block in net.encoder.layers:
+            original_attention = block.attn
+
+            # Initialize custom attention with the same dimensions
+            custom_attention = CustomScaledDotProductAttention(
+                embed_dim=original_attention.qkv.in_features,
+                num_heads=original_attention.num_heads,
+                dropout=original_attention.proj_drop.p
+            )
+
+            # Copy weights from the original attention layer to the custom one
+            custom_attention.qkv_proj.weight.data = original_attention.qkv.weight.data.clone()
+            custom_attention.qkv_proj.bias.data = original_attention.qkv.bias.data.clone()
+            custom_attention.out_proj.weight.data = original_attention.proj.weight.data.clone()
+            custom_attention.out_proj.bias.data = original_attention.proj.bias.data.clone()
+
+            # Replace the attention layer in the block
+            block.attn = custom_attention
+
     elif model == "BERT":
         # Do not support non-pretrained BERT since it does not make sense
         net = BertForSequenceClassification.from_pretrained("bert-base-uncased", num_labels=num_classes)
@@ -33,6 +53,29 @@ def get_model(pretrained, model, num_classes):
         raise ValueError
 
     return net, tokenizer
+
+class CustomScaledDotProductAttention(torch.nn.Module):
+    def __init__(self, embed_dim, num_heads, dropout=0.0):
+        super(CustomScaledDotProductAttention, self).__init__()
+        self.num_heads = num_heads
+        self.head_dim = embed_dim // num_heads
+        self.scale = self.head_dim ** -0.5
+        self.qkv_proj = torch.nn.Linear(embed_dim, embed_dim * 3)  # For query, key, value
+        self.out_proj = torch.nn.Linear(embed_dim, embed_dim)      # Output projection
+        self.dropout = torch.nn.Dropout(dropout)
+
+    def forward(self, x):
+        B, N, C = x.shape
+        qkv = self.qkv_proj(x)
+        qkv = qkv.reshape(B, N, 3, self.num_heads, self.head_dim).permute(2, 0, 3, 1, 4)
+        q, k, v = qkv[0], qkv[1], qkv[2]
+
+        attn_weights = (q @ k.transpose(-2, -1)) * self.scale
+        attn_weights = attn_weights.softmax(dim=-1)
+        attn_weights = self.dropout(attn_weights)
+
+        attn_output = (attn_weights @ v).transpose(1, 2).reshape(B, N, C)
+        return self.out_proj(attn_output)
 
 # # https://github.com/lolemacs/continuous-sparsification/blob/master/models/layers.py
 # class CustomConv(nn.Conv2d):
