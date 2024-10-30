@@ -105,7 +105,7 @@ class Strategy:
         # Initialize model and optimizer
         self.clf, _ = get_model(self.args.pretrained, self.args.architecture, self.num_classes)
         self.clf = self.clf.cuda()
-        maml = l2l.algorithms.MAML(self.clf, lr=self.args.lr)
+        maml = l2l.algorithms.MAML(self.clf, lr=self.args.lr, first_order=bool(self.args.first_order))
         optimizer = optim.Adam(maml.parameters(), lr=self.args.lr, weight_decay=self.args.weight_decay)
 
         # Obtain train and validation dataset and loader
