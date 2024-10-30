@@ -4,7 +4,7 @@ import os
 from utils.mcdominoes import get_mcdominoes, MCDOMINOES
 from utils.spuco import get_spuco, SPUCO
 from utils.spawrious import get_spawrious, SPAWRIOUS
-
+from utils.celeba import get_celeba, CELEBA
 
 def log_data(x, y, p, handler, dataset_name, dataset_split):
     base_dir = os.path.join("data", dataset_name, dataset_split)
@@ -27,13 +27,6 @@ def get_data(dataset, data_dir, spurious_strength, seed):
         X_tr, Y_tr, P_tr, X_val, Y_val, P_val, X_te, Y_te, P_te = \
             get_mcdominoes(data_dir, spurious_strength, seed)
         X_tr, X_val, X_te = [i for i in X_tr], [i for i in X_val], [i for i in X_te]
-    elif dataset == "spawrious":
-        target_resolution = (512, 512)
-        num_classes = 4
-        num_attributes = 4
-        handler = SPAWRIOUS
-        X_tr, Y_tr, P_tr, X_val, Y_val, P_val, X_te, Y_te, P_te = \
-            get_spawrious(data_dir, spurious_strength, seed)
     elif dataset == "spuco":
         target_resolution = (512, 512)
         num_classes = 4
@@ -41,6 +34,13 @@ def get_data(dataset, data_dir, spurious_strength, seed):
         handler = SPUCO
         X_tr, Y_tr, P_tr, X_val, Y_val, P_val, X_te, Y_te, P_te = \
             get_spuco(data_dir, spurious_strength, seed)
+    elif dataset == "celeba":
+        target_resolution = (224, 224)
+        num_classes = 2
+        num_attributes = 2
+        handler = CELEBA
+        X_tr, Y_tr, P_tr, X_val, Y_val, P_val, X_te, Y_te, P_te = \
+            get_celeba(data_dir, spurious_strength, seed)
     else:
         print("Data specified not supported")
         exit()
