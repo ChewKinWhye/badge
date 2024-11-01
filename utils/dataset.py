@@ -40,7 +40,7 @@ def get_data(dataset, data_dir, spurious_strength, seed):
         num_attributes = 2
         handler = CELEBA
         X_tr, Y_tr, P_tr, X_val, Y_val, P_val, X_te, Y_te, P_te = \
-            get_celeba(data_dir, spurious_strength, seed)
+            get_celeba(data_dir, seed)
     else:
         print("Data specified not supported")
         exit()
