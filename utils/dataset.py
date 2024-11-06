@@ -5,6 +5,8 @@ from utils.mcdominoes import get_mcdominoes, MCDOMINOES
 from utils.spuco import get_spuco, SPUCO
 from utils.spawrious import get_spawrious, SPAWRIOUS
 from utils.celeba import get_celeba, CELEBA
+from utils.multinli import get_multinli, MULTINLI
+
 
 def log_data(x, y, p, handler, dataset_name, dataset_split):
     base_dir = os.path.join("data", dataset_name, dataset_split)
@@ -41,6 +43,14 @@ def get_data(dataset, data_dir, spurious_strength, seed):
         handler = CELEBA
         X_tr, Y_tr, P_tr, X_val, Y_val, P_val, X_te, Y_te, P_te = \
             get_celeba(data_dir, seed)
+    elif dataset == "multinli":
+        target_resolution = None
+        num_classes = 3
+        num_attributes = 2
+        handler = MULTINLI
+        X_tr, Y_tr, P_tr, X_val, Y_val, P_val, X_te, Y_te, P_te = \
+            get_multinli(data_dir)
+
     else:
         print("Data specified not supported")
         exit()

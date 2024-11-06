@@ -25,10 +25,9 @@ class Strategy:
         self.target_resolution = target_resolution
         self.args = args
         self.n_pool = len(Y)
-        self.clf, self.tokenizer = get_model(self.args.pretrained, self.args.architecture, self.num_classes)
+        self.clf = get_model(self.args.pretrained, self.args.architecture, self.num_classes)
         self.clf = self.clf.cuda()
-        if self.tokenizer is not None:
-            self.tokenizer = self.tokenizer.cuda()
+
     def query(self, n):
         pass
 
@@ -37,7 +36,7 @@ class Strategy:
 
     def train(self, X_val, Y_val, P_val, state_dict=None, verbose=True):
         # Initialize model and optimizer
-        self.clf, _ = get_model(self.args.pretrained, self.args.architecture, self.num_classes)
+        self.clf = get_model(self.args.pretrained, self.args.architecture, self.num_classes)
         self.clf = self.clf.cuda()
         if state_dict is not None:
             self.clf.load_state_dict(state_dict)
@@ -70,6 +69,8 @@ class Strategy:
                 loss = criterion(logits, y)
 
                 loss.backward()
+                if self.args.model == "BERT":
+                    torch.nn.utils.clip_grad_norm_(self.clf.parameters(), 1.0)
                 optimizer.step()
 
                 # Monitor training stats
@@ -95,7 +96,7 @@ class Strategy:
         # --- Train End ---
         print(f'Best validation accuracy: {best_val_avg_acc:.3f} at epoch {best_epoch}')
         state_dict = torch.load(os.path.join(self.args.save_dir, "ckpt.pt"))
-        self.clf, _ = get_model(self.args.pretrained, self.args.architecture, self.num_classes)
+        self.clf = get_model(self.args.pretrained, self.args.architecture, self.num_classes)
         self.clf = self.clf.cuda()
         self.clf.load_state_dict(state_dict)
         return state_dict
@@ -103,7 +104,7 @@ class Strategy:
 
     def train_MAML(self, X_query, Y_query, P_query, X_val, Y_val, P_val, verbose=True):
         # Initialize model and optimizer
-        self.clf, _ = get_model(self.args.pretrained, self.args.architecture, self.num_classes)
+        self.clf = get_model(self.args.pretrained, self.args.architecture, self.num_classes)
         self.clf = self.clf.cuda()
         maml = l2l.algorithms.MAML(self.clf, lr=self.args.lr, first_order=bool(self.args.first_order))
         optimizer = optim.Adam(maml.parameters(), lr=self.args.lr, weight_decay=self.args.weight_decay)
@@ -190,7 +191,7 @@ class Strategy:
         # --- Train End ---
         print(f'Best validation accuracy: {best_val_avg_acc:.3f} at epoch {best_epoch}')
         state_dict = torch.load(os.path.join(self.args.save_dir, "ckpt.pt"))
-        self.clf, _ = get_model(self.args.pretrained, self.args.architecture, self.num_classes)
+        self.clf = get_model(self.args.pretrained, self.args.architecture, self.num_classes)
         self.clf = self.clf.cuda()
         self.clf.load_state_dict(state_dict)
         return state_dict
