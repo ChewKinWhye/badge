@@ -6,7 +6,7 @@ from utils.spuco import get_spuco, SPUCO
 from utils.spawrious import get_spawrious, SPAWRIOUS
 from utils.celeba import get_celeba, CELEBA
 from utils.multinli import get_multinli, MULTINLI
-
+from utils.civilcomments import get_civilcomments, CIVILCOMMENTS
 
 def log_data(x, y, p, handler, dataset_name, dataset_split):
     base_dir = os.path.join("data", dataset_name, dataset_split)
@@ -50,6 +50,13 @@ def get_data(dataset, data_dir, spurious_strength, seed):
         handler = MULTINLI
         X_tr, Y_tr, P_tr, X_val, Y_val, P_val, X_te, Y_te, P_te = \
             get_multinli(data_dir)
+    elif dataset == "civilcomments":
+        target_resolution = None
+        num_classes = 2
+        num_attributes = 2
+        handler = CIVILCOMMENTS
+        X_tr, Y_tr, P_tr, X_val, Y_val, P_val, X_te, Y_te, P_te = \
+            get_civilcomments(data_dir)
 
     else:
         print("Data specified not supported")
