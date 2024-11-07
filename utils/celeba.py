@@ -65,8 +65,8 @@ def get_celeba(data_dir, seed):
     f = open(os.path.join(data_dir, "metadata_celeba.csv"), "w")
     f.write("id,filename,split,y,a\n")
     for i, (split, attr) in enumerate(zip(splits, attrs)):
-        fi, si = split.strip().split()
-        ai = attr.strip().split()[1:]
+        fi, si = split.strip().split(',')
+        ai = attr.strip().split(',')[1:]
         yi = 1 if ai[9] == "1" else 0
         gi = 1 if ai[20] == "1" else 0
         f.write("{},{},{},{},{}\n".format(i + 1, fi, si, yi, gi))
