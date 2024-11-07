@@ -63,7 +63,8 @@ def get_civilcomments(data_dir):
     df["no active attributes"] = 0
     df.loc[(df[group_attrs].sum(axis=1)) == 0, "no active attributes"] = 1
     df = df.rename(columns={"no active attributes": "a"})
-    df = df["comment_text", "split", "y", "a"]
+    cols_to_keep = ["comment_text", "split", "y", "a"]
+    df = df[cols_to_keep]
 
     df_subset = df[df["split"] == "train"]
     X_train = df_subset["comment_text"].tolist()
