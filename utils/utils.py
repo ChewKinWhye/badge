@@ -81,11 +81,11 @@ class AverageGroupMeter(object):
     def update(self, logits, y, p):
         logits, y, p = logits.cpu(), y.cpu, p.cpu()
         # Add 1 to all the groups indexed by y and p to the count
-        np.add.at(self.count, (y, p), 1)
+        np.add.at(self.count, (np.array(y, dtype=int), np.array(p, dtype=int)), 1)
         preds = torch.argmax(logits, axis=1)
         correct_batch = (preds == y)
         # Add 1 to all the groups indexed by y and p that are correct to the sum
-        np.add.at(self.sum, (y[correct_batch], p[correct_batch]), 1)
+        np.add.at(self.sum, (np.array(y[correct_batch], dtype=int), np.array(p[correct_batch], dtype=int)), 1)
         self.avg = self.sum / self.count
 
     def get_stats(self, test_group):
