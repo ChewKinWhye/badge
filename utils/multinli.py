@@ -59,21 +59,21 @@ def get_multinli(data_dir):
     df = pd.read_csv(metadata)
     df_subset = df[df["split"] == 0]
     X_train = x_array[df_subset["filename"].tolist()]
-    Y_train = df_subset["y"].tolist()
-    P_train = df_subset["a"].tolist()
+    Y_train = np.array(df_subset["y"].tolist())
+    P_train = np.array(df_subset["a"].tolist())
 
     metadata = os.path.join(data_dir, "metadata_multinli.csv")
     df = pd.read_csv(metadata)
     df_subset = df[df["split"] == 1]
     X_val = x_array[df_subset["filename"].tolist()]
-    Y_val = df_subset["y"].tolist()
-    P_val = df_subset["a"].tolist()
+    Y_val = np.array(df_subset["y"].tolist())
+    P_val = np.array(df_subset["a"].tolist())
     metadata = os.path.join(data_dir, "metadata_multinli.csv")
     df = pd.read_csv(metadata)
     df_subset = df[df["split"] == 2]
     X_test = x_array[df_subset["filename"].tolist()]
-    Y_test = df_subset["y"].tolist()
-    P_test = df_subset["a"].tolist()
+    Y_test = np.array(df_subset["y"].tolist())
+    P_test = np.array(df_subset["a"].tolist())
     with open(save_dir, 'wb') as f:
         pickle.dump((X_train, Y_train, P_train, X_val, Y_val, P_val, X_test, Y_test, P_test), f)
     return X_train, Y_train, P_train, X_val, Y_val, P_val, X_test, Y_test, P_test
