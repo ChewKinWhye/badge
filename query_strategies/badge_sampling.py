@@ -37,8 +37,8 @@ def init_centers(X1, X2, chosen, chosen_list,  mu, D2):
 
 
 class BadgeSampling(Strategy):
-    def __init__(self, X, Y, P, labelled_mask, handler, num_classes, num_epochs, target_resolution, args):
-        super(BadgeSampling, self).__init__(X, Y, P, labelled_mask, handler, num_classes, num_epochs, target_resolution, args)
+    def __init__(self, X, Y, P, labelled_mask, handler, num_classes, num_attributes, num_epochs, target_resolution, test_group, args):
+        super(BadgeSampling, self).__init__(X, Y, P, labelled_mask, handler, num_classes, num_attributes, num_epochs, target_resolution, test_group, args)
 
     def query(self, n):
         idxs_unlabeled = np.arange(self.n_pool)[~self.labelled_mask]

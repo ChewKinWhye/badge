@@ -66,45 +66,39 @@ class AverageMeter(object):
         self.count += n
         self.avg = self.sum / self.count
 
-def update_meter(train_avg_acc, train_minority_acc, train_majority_acc, logits, y, p):
-    preds = torch.argmax(logits, axis=1)
-    correct_batch = (preds == y)
-    train_avg_acc.update(correct_batch.sum().item() / len(y), len(y))
-    mask = y != p
-    n = mask.sum().item()
-    if n != 0:
-        corr = correct_batch[mask].sum().item()
-        train_minority_acc.update(corr / n, n)
+class AverageGroupMeter(object):
+    """Computes and stores the average and current value"""
+    def __init__(self, num_classes, num_attributes):
+        self.num_classes = num_classes
+        self.num_attributes = num_attributes
+        self.reset()
 
-    # Update majority
-    mask = y == p
-    n = mask.sum().item()
-    if n != 0:
-        corr = correct_batch[mask].sum().item()
-        train_majority_acc.update(corr / n, n)
-    return train_avg_acc, train_minority_acc, train_majority_acc
+    def reset(self):
+        self.avg = np.zeros((self.num_classes, self.num_attributes))
+        self.sum = np.zeros((self.num_classes, self.num_attributes))
+        self.count = np.zeros((self.num_classes, self.num_attributes))
 
-def update_indicator(indicator, idxs, logits, y):
-    preds = torch.argmax(logits, dim=1)
-    correct_batch = (preds == y)
-    indicator[idxs] = correct_batch.cpu()
-    return indicator
+    def update(self, logits, y, p):
+        # Add 1 to all the groups indexed by y and p to the count
+        np.add.at(self.count, (y, p), 1)
+        preds = torch.argmax(logits, axis=1)
+        correct_batch = (preds == y)
+        # Add 1 to all the groups indexed by y and p that are correct to the sum
+        np.add.at(self.sum, (y[correct_batch], p[correct_batch]), 1)
+        self.avg = self.sum / self.count
 
-# def load_model(pretrained, architecture, num_classes):
-#     os.environ['TORCH_HOME'] = 'models/resnet'  # setting the environment variable
-#     if architecture == "resnet18":
-#         if pretrained:
-#             model = torchvision.models.resnet18(weights=ResNet18_Weights.IMAGENET1K_V1)
-#         else:
-#             model = torchvision.models.resnet18(weights=None)
-#     else: # resnet50
-#         if pretrained:
-#             model = torchvision.models.resnet50(weights=ResNet50_Weights.IMAGENET1K_V1)
-#         else:
-#             model = torchvision.models.resnet50(weights=None)
-#     d = model.fc.in_features
-#     model.fc = torch.nn.Linear(d, num_classes)
-#     return model
+    def get_stats(self, test_group):
+        average_acc = np.sum(self.sum) / np.sum(self.count)
+        if test_group == "minority":
+            minority_mask = ~np.eye(self.sum.shape[0], dtype=bool)
+            minority_acc = np.sum(self.sum[minority_mask]) / np.sum(self.count[minority_mask])
+            majority_mask = np.eye(self.sum.shape[0], dtype=bool)
+            majority_acc = np.sum(self.sum[majority_mask]) / np.sum(self.count[majority_mask])
+            return average_acc, minority_acc, majority_acc
+        else:
+            worst_acc = np.min(self.avg)
+            best_acc = np.max(self.avg)
+            return average_acc, worst_acc, best_acc
 
 def get_output(m, x, model):
     if model == "resnet18" or model == "resnet50":
@@ -136,3 +130,43 @@ def get_output(m, x, model):
         p = m.heads(x)
 
         return p, x
+
+# def update_meter(train_avg_acc, train_minority_acc, train_majority_acc, logits, y, p):
+#     preds = torch.argmax(logits, axis=1)
+#     correct_batch = (preds == y)
+#     train_avg_acc.update(correct_batch.sum().item() / len(y), len(y))
+#     mask = y != p
+#     n = mask.sum().item()
+#     if n != 0:
+#         corr = correct_batch[mask].sum().item()
+#         train_minority_acc.update(corr / n, n)
+#
+#     # Update majority
+#     mask = y == p
+#     n = mask.sum().item()
+#     if n != 0:
+#         corr = correct_batch[mask].sum().item()
+#         train_majority_acc.update(corr / n, n)
+#     return train_avg_acc, train_minority_acc, train_majority_acc
+#
+# def update_indicator(indicator, idxs, logits, y):
+#     preds = torch.argmax(logits, dim=1)
+#     correct_batch = (preds == y)
+#     indicator[idxs] = correct_batch.cpu()
+#     return indicator
+
+# def load_model(pretrained, architecture, num_classes):
+#     os.environ['TORCH_HOME'] = 'models/resnet'  # setting the environment variable
+#     if architecture == "resnet18":
+#         if pretrained:
+#             model = torchvision.models.resnet18(weights=ResNet18_Weights.IMAGENET1K_V1)
+#         else:
+#             model = torchvision.models.resnet18(weights=None)
+#     else: # resnet50
+#         if pretrained:
+#             model = torchvision.models.resnet50(weights=ResNet50_Weights.IMAGENET1K_V1)
+#         else:
+#             model = torchvision.models.resnet50(weights=None)
+#     d = model.fc.in_features
+#     model.fc = torch.nn.Linear(d, num_classes)
+#     return model

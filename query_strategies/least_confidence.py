@@ -2,8 +2,8 @@ from .strategy import Strategy
 import numpy as np
 
 class LeastConfidence(Strategy):
-    def __init__(self, X, Y, P, labelled_mask, handler, num_classes, num_epochs, target_resolution, args):
-        super(LeastConfidence, self).__init__(X, Y, P, labelled_mask, handler, num_classes, num_epochs, target_resolution, args)
+    def __init__(self, X, Y, P, labelled_mask, handler, num_classes, num_attributes, num_epochs, target_resolution, test_group, args):
+        super(LeastConfidence, self).__init__(X, Y, P, labelled_mask, handler, num_classes, num_attributes, num_epochs, target_resolution, test_group, args)
 
     def query(self, n):
         idxs_unlabeled = np.arange(self.n_pool)[~self.labelled_mask]
