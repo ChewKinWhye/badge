@@ -58,9 +58,9 @@ def get_celeba(data_dir, seed):
         return X_train, Y_train, P_train, X_val, Y_val, P_val, X_test, Y_test, P_test
     print("Generating Dataset")
 
-    with open(os.path.join(data_dir, "list_eval_partition.txt"), "r") as f:
+    with open(os.path.join(data_dir, "list_eval_partition.csv"), "r") as f:
         splits = f.readlines()
-    with open(os.path.join(data_dir, "list_attr_celeba.txt"), "r") as f:
+    with open(os.path.join(data_dir, "list_attr_celeba.csv"), "r") as f:
         attrs = f.readlines()[2:]
     f = open(os.path.join(data_dir, "metadata_celeba.csv"), "w")
     f.write("id,filename,split,y,a\n")
