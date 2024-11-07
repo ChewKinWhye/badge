@@ -87,8 +87,8 @@ class Strategy:
             # Print stats
             if verbose:
                 print(f"Epoch {epoch} Loss: {ce_loss_meter.avg:.3f} Time Taken: {time.time() - start:.3f}")
-                print(f"Train Average Accuracy: {train_avg_acc.avg:.3f} Train Majority Accuracy: {train_majority_acc.avg:.3f} "
-                    f"Train Minority Accuracy: {train_minority_acc.avg:.3f}")
+                print(f"Train Average Accuracy: {train_avg_acc:.3f} Train Majority Accuracy: {train_majority_acc:.3f} "
+                    f"Train Minority Accuracy: {train_minority_acc:.3f}")
                 print(f"Val Average Accuracy: {val_avg_acc:.3f} Val Majority Accuracy: {val_majority_acc:.3f} "
                       f"Val Minority Accuracy: {val_minority_acc:.3f}")
         # --- Train End ---
