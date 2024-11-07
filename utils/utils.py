@@ -79,7 +79,7 @@ class AverageGroupMeter(object):
         self.count = np.zeros((self.num_classes, self.num_attributes))
 
     def update(self, logits, y, p):
-        logits, y, p = logits.cpu(), y.cpu, p.cpu()
+        logits, y, p = logits.cpu(), y.cpu(), p.cpu()
         # Add 1 to all the groups indexed by y and p to the count
         np.add.at(self.count, (np.array(y, dtype=int), np.array(p, dtype=int)), 1)
         preds = torch.argmax(logits, axis=1)
