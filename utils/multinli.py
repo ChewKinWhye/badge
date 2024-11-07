@@ -36,7 +36,7 @@ def get_multinli(data_dir):
         return X_train, Y_train, P_train, X_val, Y_val, P_val, X_test, Y_test, P_test
 
     # Meta Data
-    df = pd.read_csv(os.path.join(data_dir, "multinli", "data", "metadata_random.csv"), index_col=0)
+    df = pd.read_csv(os.path.join(data_dir, "metadata_random.csv"), index_col=0)
     df = df.rename(columns={"gold_label": "y", "sentence2_has_negation": "a"})
     df = df.reset_index(drop=True)
     df.index.name = "id"
@@ -45,10 +45,9 @@ def get_multinli(data_dir):
     df = df.reset_index()[["id", "filename", "split", "y", "a"]]
     df.to_csv(os.path.join(data_dir, "metadata_multinli.csv"), index=False)
 
-    root = os.path.join(data_dir, "multinli", "glue_data", "MNLI")
     features_array = []
     for feature_file in ["cached_train_bert-base-uncased_128_mnli", "cached_dev_bert-base-uncased_128_mnli", "cached_dev_bert-base-uncased_128_mnli-mm"]:
-        features = torch.load(os.path.join(root, feature_file))
+        features = torch.load(os.path.join(data_dir, feature_file))
         features_array += features
     all_input_ids = torch.tensor([f.input_ids for f in features_array], dtype=torch.long)
     all_input_masks = torch.tensor([f.input_mask for f in features_array], dtype=torch.long)
