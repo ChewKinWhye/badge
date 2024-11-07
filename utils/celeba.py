@@ -59,9 +59,9 @@ def get_celeba(data_dir, seed):
     print("Generating Dataset")
 
     with open(os.path.join(data_dir, "list_eval_partition.csv"), "r") as f:
-        splits = f.readlines()
+        splits = f.readlines()[1:]
     with open(os.path.join(data_dir, "list_attr_celeba.csv"), "r") as f:
-        attrs = f.readlines()[2:]
+        attrs = f.readlines()[1:]
     f = open(os.path.join(data_dir, "metadata_celeba.csv"), "w")
     f.write("id,filename,split,y,a\n")
     for i, (split, attr) in enumerate(zip(splits, attrs)):
