@@ -86,7 +86,8 @@ class AverageGroupMeter(object):
         correct_batch = (preds == y)
         # Add 1 to all the groups indexed by y and p that are correct to the sum
         np.add.at(self.sum, (np.array(y[correct_batch], dtype=int), np.array(p[correct_batch], dtype=int)), 1)
-        self.avg = self.sum / self.count
+        # Divide, setting avg to 0 when count is 0
+        self.avg = np.divide(self.sum, self.count, out=np.zeros_like(self.sum, dtype=float), where=self.count != 0)
 
     def get_stats(self, test_group):
         average_acc = np.sum(self.sum) / np.sum(self.count)
