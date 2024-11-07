@@ -68,7 +68,7 @@ class Strategy:
                 loss = criterion(logits, y)
 
                 loss.backward()
-                if self.args.model == "BERT":
+                if self.args.architecture == "BERT":
                     torch.nn.utils.clip_grad_norm_(self.clf.parameters(), 1.0)
                 optimizer.step()
 
@@ -143,6 +143,8 @@ class Strategy:
                 logits_meta = task_model(x_meta)
                 meta_loss = criterion(logits_meta, y_meta)
                 meta_loss.backward()
+                if self.args.architecture == "BERT":
+                    torch.nn.utils.clip_grad_norm_(maml.parameters(), 1.0)
                 optimizer.step()
 
                 # Monitor training stats
