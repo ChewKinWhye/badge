@@ -61,13 +61,13 @@ if __name__ == "__main__":
         # Draw Conclusions: Gain additional information
         if args.method == "meta":
             state_dict = strategy.train_MAML([X_tr[i] for i in query_idxs], Y_tr[query_idxs], P_tr[query_idxs], X_val, Y_val, P_val, verbose=False)
-            print(f"Test: Average Accuracy, Minority/Worst, Majority/Best: {strategy.evaluate_model(loader_test, test_group)}")
+            print(f"Test: Average Accuracy, Minority/Worst, Majority/Best: {strategy.evaluate_model(loader_test)}")
 
         # Next Round: Train and Test
         labelled_mask[query_idxs] = True
         strategy.update(labelled_mask)
         strategy.train(X_val, Y_val, P_val, state_dict, verbose=False)
-        test_average_acc[rd], test_minority_acc[rd], test_majority_acc[rd] = strategy.evaluate_model(loader_test, test_group)
+        test_average_acc[rd], test_minority_acc[rd], test_majority_acc[rd] = strategy.evaluate_model(loader_test)
 
         # Print and Clean up
         print(f"Round {rd}, Fraction of minority: {np.sum(Y_tr[query_idxs] != P_tr[query_idxs])}/{args.nQuery}, "

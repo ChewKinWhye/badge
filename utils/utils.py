@@ -116,7 +116,7 @@ def get_output(m, x, model):
         x = torch.flatten(x, 1)
         p = m.fc(x)
         return p, x
-    else: #ViT
+    elif model == "ViT":
         x = m._process_input(x)
         n = x.shape[0]
 
@@ -132,6 +132,20 @@ def get_output(m, x, model):
         p = m.heads(x)
 
         return p, x
+    else: # BERT
+        input_ids = x[:, :, 0]
+        attention_mask = x[:, :, 1]
+        token_type_ids = x[:, :, 2]
+        outputs = m.model(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            token_type_ids=token_type_ids,
+            output_hidden_states=True
+        )
+        last_hidden_state = outputs.hidden_states[-1]
+        cls_token = last_hidden_state[:, 0]
+        logits = outputs.logits
+        return logits, cls_token
 
 # def update_meter(train_avg_acc, train_minority_acc, train_majority_acc, logits, y, p):
 #     preds = torch.argmax(logits, axis=1)
