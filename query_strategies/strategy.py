@@ -32,7 +32,7 @@ class Strategy:
         pass
 
     def update(self, labelled_mask):
-        self.labelled_mask = labelled_mask
+        self.labelled_mask = labelled_mask.astype(bool)
 
     def train(self, X_val, Y_val, P_val, state_dict=None, verbose=True):
         # Initialize model and optimizer
@@ -100,7 +100,7 @@ class Strategy:
         return state_dict
 
 
-    def train_MAML(self, X_query, Y_query, P_query, X_val, Y_val, P_val, verbose=True):
+    def train_MAML(self, labelled_mask, X_val, Y_val, P_val, verbose=True):
         # Initialize model and optimizer
         self.clf = get_model(self.args.pretrained, self.args.architecture, self.num_classes)
         self.clf = self.clf.cuda()
@@ -108,10 +108,20 @@ class Strategy:
         optimizer = optim.Adam(maml.parameters(), lr=self.args.lr, weight_decay=self.args.weight_decay)
 
         # Obtain train and validation dataset and loader
+        tasks = []
+        for i in range(1, np.max(labelled_mask)+1):
+            idxs_task = np.arange(self.n_pool)[labelled_mask < i].astype(int)
+            loader_task = DataLoader(self.handler([self.X[i] for i in idxs_task], torch.Tensor(self.Y[idxs_task]).long(),
+                                   torch.Tensor(self.P[idxs_task]).long(), isTrain=True, target_resolution=self.target_resolution),
+                                   shuffle=True, batch_size=self.args.batch_size)
+            idxs_meta = np.arange(self.n_pool)[labelled_mask == i].astype(int)
+            loader_meta = DataLoader(self.handler([self.X[i] for i in idxs_meta], torch.Tensor(self.Y[idxs_meta]).long(),
+                             torch.Tensor(self.P[idxs_meta]).long(), isTrain=True,target_resolution=self.target_resolution),
+                             shuffle=True, batch_size=self.args.batch_size)
+            tasks.append((loader_task, loader_meta))
+
         idxs_train = np.arange(self.n_pool)[self.labelled_mask].astype(int)
         loader_tr = DataLoader(self.handler([self.X[i] for i in idxs_train], torch.Tensor(self.Y[idxs_train]).long(), torch.Tensor(self.P[idxs_train]).long(), isTrain=True, target_resolution=self.target_resolution),
-                               shuffle=True, batch_size=self.args.batch_size)
-        loader_tr_meta = DataLoader(self.handler(X_query, torch.Tensor(Y_query).long(), torch.Tensor(P_query).long(), isTrain=True, target_resolution=self.target_resolution),
                                shuffle=True, batch_size=self.args.batch_size)
         loader_val = DataLoader(self.handler(X_val, torch.Tensor(Y_val).long(), torch.Tensor(P_val).long(), isTrain=False, target_resolution=self.target_resolution),
                                shuffle=False, batch_size=self.args.batch_size)
@@ -120,36 +130,36 @@ class Strategy:
 
         # --- Train Start ---
         best_val_avg_acc, best_epoch = -1, None
+
         for epoch in range(self.num_epochs):
             maml.module.train()
             # Track metrics
             ce_loss_meter, train_group_acc, val_group_acc = AverageMeter(), AverageGroupMeter(self.num_classes, self.num_attributes), AverageGroupMeter(self.num_classes, self.num_attributes)
             start = time.time()
-
-            for batch in tqdm.tqdm(loader_tr_meta, disable=True):
+            for _ in range(len(loader_tr)):
                 optimizer.zero_grad()
-                # Copy weights
-                task_model = maml.clone()  # torch.clone() for nn.Modules
-                x_meta, y_meta, p_meta, idxs_meta = batch
-                x_meta, y_meta, p_meta, idxs_meta = x_meta.cuda(), y_meta.cuda(), p_meta.cuda(), idxs_meta.cuda()
-                # Take 5 update steps on the training dataset
-                for k in range(self.args.inner_steps):
-                    x, y, p, idxs = next(iter(loader_tr))
-                    x, y, p, idxs = x.cuda(), y.cuda(), p.cuda(), idxs.cuda()
-                    logits = task_model(x)
-                    loss = criterion(logits, y)
-                    task_model.adapt(loss)
-                # Compute loss on query (meta) dataset
-                logits_meta = task_model(x_meta)
-                meta_loss = criterion(logits_meta, y_meta)
+                meta_loss = torch.tensor(0.0, requires_grad=True).cuda()
+                for loader_task, loader_meta in tasks:
+                    task_model = maml.clone()  # torch.clone() for nn.Modules
+                    x_meta, y_meta, p_meta, idxs_meta = next(iter(loader_meta))
+                    x_meta, y_meta, p_meta, idxs_meta = x_meta.cuda(), y_meta.cuda(), p_meta.cuda(), idxs_meta.cuda()
+                    for k in range(self.args.inner_steps):
+                        x, y, p, idxs = next(iter(loader_task))
+                        x, y, p, idxs = x.cuda(), y.cuda(), p.cuda(), idxs.cuda()
+                        logits = task_model(x)
+                        loss = criterion(logits, y)
+                        task_model.adapt(loss)
+                    logits_meta = task_model(x_meta)
+                    meta_loss += criterion(logits_meta, y_meta)
+                    train_group_acc.update(logits_meta.detach(), y_meta, p_meta)
+                meta_loss = meta_loss / len(tasks)
                 meta_loss.backward()
                 if self.args.architecture == "BERT":
                     torch.nn.utils.clip_grad_norm_(maml.parameters(), 1.0)
                 optimizer.step()
 
                 # Monitor training stats
-                ce_loss_meter.update(torch.mean(meta_loss).detach().item(), x_meta.size(0))
-                train_group_acc.update(logits_meta.detach(), y_meta, p_meta)
+                ce_loss_meter.update(meta_loss.detach().item())
 
             # Meta Evaluation, evaluate after updating on train dataset
             maml.module.eval()
