@@ -32,13 +32,13 @@ if __name__ == "__main__":
 
     # Acquisition Algorithm
     if args.alg == 'rand': # random sampling
-        strategy = RandomSampling(X_tr, Y_tr, P_tr, labelled_mask, handler, num_classes, num_attributes, args.num_epochs, target_resolution, test_group, args)
+        strategy = RandomSampling(X_tr, Y_tr, P_tr, labelled_mask.astype(bool), handler, num_classes, num_attributes, args.num_epochs, target_resolution, test_group, args)
     elif args.alg == 'conf': # confidence-based sampling
-        strategy = LeastConfidence(X_tr, Y_tr, P_tr, labelled_mask, handler, num_classes, num_attributes, args.num_epochs, target_resolution, test_group, args)
+        strategy = LeastConfidence(X_tr, Y_tr, P_tr, labelled_mask.astype(bool), handler, num_classes, num_attributes, args.num_epochs, target_resolution, test_group, args)
     elif args.alg == 'badge': # batch active learning by diverse gradient embeddings
-        strategy = BadgeSampling(X_tr, Y_tr, P_tr, labelled_mask, handler, num_classes, num_attributes, args.num_epochs, target_resolution, test_group, args)
+        strategy = BadgeSampling(X_tr, Y_tr, P_tr, labelled_mask.astype(bool), handler, num_classes, num_attributes, args.num_epochs, target_resolution, test_group, args)
     elif args.alg == 'coreset': # coreset sampling
-        strategy = CoreSet(X_tr, Y_tr, P_tr, labelled_mask, handler, num_classes, num_attributes, args.num_epochs, target_resolution, test_group, args)
+        strategy = CoreSet(X_tr, Y_tr, P_tr, labelled_mask.astype(bool), handler, num_classes, num_attributes, args.num_epochs, target_resolution, test_group, args)
     else:
         print('Choose a valid acquisition function.')
         raise ValueError
