@@ -119,6 +119,7 @@ class Strategy:
                              torch.Tensor(self.P[idxs_meta]).long(), isTrain=True,target_resolution=self.target_resolution),
                              shuffle=True, batch_size=self.args.batch_size)
             tasks.append((loader_task, loader_meta))
+            num_batches = len(loader_meta)
 
         idxs_train = np.arange(self.n_pool)[self.labelled_mask].astype(int)
         loader_tr = DataLoader(self.handler([self.X[i] for i in idxs_train], torch.Tensor(self.Y[idxs_train]).long(), torch.Tensor(self.P[idxs_train]).long(), isTrain=True, target_resolution=self.target_resolution),
@@ -136,7 +137,7 @@ class Strategy:
             # Track metrics
             ce_loss_meter, train_group_acc, val_group_acc = AverageMeter(), AverageGroupMeter(self.num_classes, self.num_attributes), AverageGroupMeter(self.num_classes, self.num_attributes)
             start = time.time()
-            for _ in range(len(loader_tr)):
+            for _ in range(num_batches):
                 optimizer.zero_grad()
                 meta_loss = torch.tensor(0.0, requires_grad=True).cuda()
                 for loader_task, loader_meta in tasks:

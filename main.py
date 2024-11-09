@@ -27,7 +27,7 @@ if __name__ == "__main__":
         test_group = "worst"
 
     # Initial labelled pool, Randomly select nStart indices to label
-    labelled_mask = np.zeros(len(X_tr))
+    labelled_mask = np.zeros(len(X_tr), dtype=np.int32)
     labelled_mask[np.random.choice(len(X_tr), args.nStart, replace=False)] = 1
 
     # Acquisition Algorithm
