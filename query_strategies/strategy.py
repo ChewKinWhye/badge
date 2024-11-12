@@ -139,7 +139,7 @@ class Strategy:
             start = time.time()
             for _ in range(num_batches):
                 optimizer.zero_grad()
-                meta_loss = torch.tensor(0.0, requires_grad=True).cuda()
+                meta_loss_total = torch.tensor(0.0, requires_grad=True).cuda()
                 for loader_task, loader_meta in tasks:
                     task_model = maml.clone()  # torch.clone() for nn.Modules
                     x_meta, y_meta, p_meta, idxs_meta = next(iter(loader_meta))
@@ -151,16 +151,17 @@ class Strategy:
                         loss = criterion(logits, y)
                         task_model.adapt(loss)
                     logits_meta = task_model(x_meta)
-                    meta_loss += criterion(logits_meta, y_meta)
+                    meta_loss = criterion(logits_meta, y_meta) / len(tasks)
+                    # Call backwards for each task to accumulate the gradients, more computationally expensive but prevents OOM
+                    meta_loss.backward()
+                    meta_loss_total += meta_loss.item()
                     train_group_acc.update(logits_meta.detach(), y_meta, p_meta)
-                meta_loss = meta_loss / len(tasks)
-                meta_loss.backward()
                 if self.args.architecture == "BERT":
                     torch.nn.utils.clip_grad_norm_(maml.parameters(), 1.0)
                 optimizer.step()
 
                 # Monitor training stats
-                ce_loss_meter.update(meta_loss.detach().item())
+                ce_loss_meter.update(meta_loss_total.detach().item())
 
             # Meta Evaluation, evaluate after updating on train dataset
             maml.module.eval()
