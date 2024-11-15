@@ -119,11 +119,10 @@ class Strategy:
                              torch.Tensor(self.P[idxs_meta]).long(), isTrain=True,target_resolution=self.target_resolution),
                              shuffle=True, batch_size=self.args.batch_size)
             tasks.append((infinite_dataloader(loader_task), infinite_dataloader(loader_meta)))
-            num_batches = len(loader_meta)
 
         idxs_train = np.arange(self.n_pool)[self.labelled_mask].astype(int)
-        loader_tr = infinite_dataloader(DataLoader(self.handler([self.X[i] for i in idxs_train], torch.Tensor(self.Y[idxs_train]).long(), torch.Tensor(self.P[idxs_train]).long(), isTrain=True, target_resolution=self.target_resolution),
-                               shuffle=True, batch_size=self.args.batch_size))
+        loader_tr = DataLoader(self.handler([self.X[i] for i in idxs_train], torch.Tensor(self.Y[idxs_train]).long(), torch.Tensor(self.P[idxs_train]).long(), isTrain=True, target_resolution=self.target_resolution),
+                               shuffle=True, batch_size=self.args.batch_size)
         loader_val = DataLoader(self.handler(X_val, torch.Tensor(Y_val).long(), torch.Tensor(P_val).long(), isTrain=False, target_resolution=self.target_resolution),
                                shuffle=False, batch_size=self.args.batch_size)
 
@@ -135,11 +134,10 @@ class Strategy:
         for epoch in range(self.num_epochs):
             maml.module.train()
             # Track metrics
-            ce_loss_meter, train_group_acc, val_group_acc = AverageMeter(), AverageGroupMeter(self.num_classes, self.num_attributes), AverageGroupMeter(self.num_classes, self.num_attributes)
+            ce_loss_meter, train_group_acc = AverageMeter(), AverageGroupMeter(self.num_classes, self.num_attributes)
             start = time.time()
-            for _ in range(num_batches):
-                optimizer.zero_grad()
-                meta_loss_total = torch.tensor(0.0, requires_grad=True).cuda()
+            for batch in tqdm.tqdm(loader_tr, disable=True):
+                loss_total = torch.tensor(0.0, requires_grad=True).cuda()
                 for loader_task, loader_meta in tasks:
                     task_model = maml.clone()  # torch.clone() for nn.Modules
                     x_meta, y_meta, p_meta, idxs_meta = next(loader_meta)
@@ -154,35 +152,29 @@ class Strategy:
                     meta_loss = criterion(logits_meta, y_meta) / len(tasks)
                     # Call backwards for each task to accumulate the gradients, more computationally expensive but prevents OOM
                     meta_loss.backward()
-                    meta_loss_total += meta_loss.item()
-                    train_group_acc.update(logits_meta.detach(), y_meta, p_meta)
+                    loss_total += meta_loss.item()
+
+                # Train-Loss
+                x, y, p, idxs = batch
+                x, y, p, idxs = x.cuda(), y.cuda(), p.cuda(), idxs.cuda()
+                logits = maml(x)
+                loss = criterion(logits, y)
+                loss.backward()
+
                 if self.args.architecture == "BERT":
                     torch.nn.utils.clip_grad_norm_(maml.parameters(), 1.0)
                 optimizer.step()
 
+                loss_total += loss.item()
+                train_group_acc.update(logits.detach(), y, p)
                 # Monitor training stats
-                ce_loss_meter.update(meta_loss_total.detach().item())
+                ce_loss_meter.update(loss_total.detach().item())
 
             # Meta Evaluation, evaluate after updating on train dataset
             maml.module.eval()
-            for batch in tqdm.tqdm(loader_val, disable=True):
-                task_model = maml.clone()  # torch.clone() for nn.Modules
-                x_meta, y_meta, p_meta, idxs_meta = batch
-                x_meta, y_meta, p_meta, idxs_meta = x_meta.cuda(), y_meta.cuda(), p_meta.cuda(), idxs_meta.cuda()
-                # Take 5 update steps on the training dataset
-                for k in range(self.args.inner_steps):
-                    x, y, p, idxs = next(loader_tr)
-                    x, y, p, idxs = x.cuda(), y.cuda(), p.cuda(), idxs.cuda()
-                    logits = task_model(x)
-                    loss = criterion(logits, y)
-                    task_model.adapt(loss)
-                # Compute loss on query (meta) dataset
-                logits_meta = task_model(x_meta)
 
-                # Monitor training stats
-                val_group_acc.update(logits_meta.detach(), y_meta, p_meta)
             train_avg_acc, train_minority_acc, train_majority_acc = train_group_acc.get_stats(self.test_group)
-            val_avg_acc, val_minority_acc, val_majority_acc = val_group_acc.get_stats(self.test_group)
+            val_avg_acc, val_minority_acc, val_majority_acc = self.evaluate_model(loader_val)
 
             # Save best model based on worst group accuracy
             if val_avg_acc > best_val_avg_acc:

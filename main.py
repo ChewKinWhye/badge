@@ -53,7 +53,6 @@ if __name__ == "__main__":
     test_average_acc[0], test_minority_acc[0], test_majority_acc[0] = strategy.evaluate_model(loader_test)
     print(f"Round 0, Train Size: {np.sum(labelled_mask)}, Test Average Accuracy: {test_average_acc[0]}, "
           f"Test Minority/Worst Accuracy: {test_minority_acc[0]}, Test Majority/Best Accuracy: {test_majority_acc[0]}")
-    state_dict = None
     for rd in range(1, NUM_ROUNDS+1):
         # Query
         query_idxs = strategy.query(args.nQuery)
@@ -62,13 +61,12 @@ if __name__ == "__main__":
 
         # Draw Conclusions: Gain additional information
         if args.method == "meta":
-            state_dict = strategy.train_MAML(labelled_mask, X_val, Y_val, P_val, verbose=False)
-            print(f"Test: Average Accuracy, Minority/Worst, Majority/Best: {strategy.evaluate_model(loader_test)}")
+            strategy.train_MAML(labelled_mask, X_val, Y_val, P_val, verbose=False)
+        # Normal ERM
+        else:
+            strategy.train(X_val, Y_val, P_val, verbose=False)
 
-        # Next Round: Train and Test
-        strategy.train(X_val, Y_val, P_val, state_dict, verbose=False)
         test_average_acc[rd], test_minority_acc[rd], test_majority_acc[rd] = strategy.evaluate_model(loader_test)
-
         # Print and Clean up
         print(f"Round {rd}, Fraction of minority: {np.sum(Y_tr[query_idxs] != P_tr[query_idxs])}/{args.nQuery}, "
               f"Train Size: {np.sum(labelled_mask.astype(bool))}, Test Average Accuracy: {test_average_acc[rd]}, "
