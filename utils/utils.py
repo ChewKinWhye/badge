@@ -186,3 +186,11 @@ def get_output(m, x, model):
 #     d = model.fc.in_features
 #     model.fc = torch.nn.Linear(d, num_classes)
 #     return model
+
+def infinite_dataloader(dataloader):
+    """
+    Creates an infinite generator for a PyTorch DataLoader.
+    """
+    while True:  # This ensures the function runs indefinitely
+        for batch in dataloader:  # Iterates over the DataLoader
+            yield batch  # Produces one batch at a time

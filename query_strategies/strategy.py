@@ -1,6 +1,6 @@
 from torch.utils.data import DataLoader
 from torch.autograd import Variable
-from utils.utils import AverageMeter, get_output, AverageGroupMeter
+from utils.utils import AverageMeter, get_output, AverageGroupMeter, infinite_dataloader
 import time
 import tqdm
 from utils.model import get_model
@@ -118,12 +118,12 @@ class Strategy:
             loader_meta = DataLoader(self.handler([self.X[i] for i in idxs_meta], torch.Tensor(self.Y[idxs_meta]).long(),
                              torch.Tensor(self.P[idxs_meta]).long(), isTrain=True,target_resolution=self.target_resolution),
                              shuffle=True, batch_size=self.args.batch_size)
-            tasks.append((loader_task, loader_meta))
+            tasks.append((infinite_dataloader(loader_task), infinite_dataloader(loader_meta)))
             num_batches = len(loader_meta)
 
         idxs_train = np.arange(self.n_pool)[self.labelled_mask].astype(int)
-        loader_tr = DataLoader(self.handler([self.X[i] for i in idxs_train], torch.Tensor(self.Y[idxs_train]).long(), torch.Tensor(self.P[idxs_train]).long(), isTrain=True, target_resolution=self.target_resolution),
-                               shuffle=True, batch_size=self.args.batch_size)
+        loader_tr = infinite_dataloader(DataLoader(self.handler([self.X[i] for i in idxs_train], torch.Tensor(self.Y[idxs_train]).long(), torch.Tensor(self.P[idxs_train]).long(), isTrain=True, target_resolution=self.target_resolution),
+                               shuffle=True, batch_size=self.args.batch_size))
         loader_val = DataLoader(self.handler(X_val, torch.Tensor(Y_val).long(), torch.Tensor(P_val).long(), isTrain=False, target_resolution=self.target_resolution),
                                shuffle=False, batch_size=self.args.batch_size)
 
@@ -142,10 +142,10 @@ class Strategy:
                 meta_loss_total = torch.tensor(0.0, requires_grad=True).cuda()
                 for loader_task, loader_meta in tasks:
                     task_model = maml.clone()  # torch.clone() for nn.Modules
-                    x_meta, y_meta, p_meta, idxs_meta = next(iter(loader_meta))
+                    x_meta, y_meta, p_meta, idxs_meta = next(loader_meta)
                     x_meta, y_meta, p_meta, idxs_meta = x_meta.cuda(), y_meta.cuda(), p_meta.cuda(), idxs_meta.cuda()
                     for k in range(self.args.inner_steps):
-                        x, y, p, idxs = next(iter(loader_task))
+                        x, y, p, idxs = next(loader_task)
                         x, y, p, idxs = x.cuda(), y.cuda(), p.cuda(), idxs.cuda()
                         logits = task_model(x)
                         loss = criterion(logits, y)
@@ -171,7 +171,7 @@ class Strategy:
                 x_meta, y_meta, p_meta, idxs_meta = x_meta.cuda(), y_meta.cuda(), p_meta.cuda(), idxs_meta.cuda()
                 # Take 5 update steps on the training dataset
                 for k in range(self.args.inner_steps):
-                    x, y, p, idxs = next(iter(loader_tr))
+                    x, y, p, idxs = next(loader_tr)
                     x, y, p, idxs = x.cuda(), y.cuda(), p.cuda(), idxs.cuda()
                     logits = task_model(x)
                     loss = criterion(logits, y)
