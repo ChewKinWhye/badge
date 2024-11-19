@@ -151,21 +151,20 @@ class Strategy:
                     logits_meta = task_model(x_meta)
                     meta_loss = criterion(logits_meta, y_meta) / len(tasks)
                     # Call backwards for each task to accumulate the gradients, more computationally expensive but prevents OOM
-                    meta_loss.backward()
-                    loss_total += meta_loss.item()
+                    # meta_loss.backward()
+                    loss_total += meta_loss
 
                 # Train-Loss
                 x, y, p, idxs = batch
                 x, y, p, idxs = x.cuda(), y.cuda(), p.cuda(), idxs.cuda()
                 logits = maml(x)
-                loss = criterion(logits, y)
-                loss.backward()
+                loss_total += criterion(logits, y)
+                loss_total.backward()
 
                 if self.args.architecture == "BERT":
                     torch.nn.utils.clip_grad_norm_(maml.parameters(), 1.0)
                 optimizer.step()
 
-                loss_total += loss.item()
                 train_group_acc.update(logits.detach(), y, p)
                 # Monitor training stats
                 ce_loss_meter.update(loss_total.detach().item())
