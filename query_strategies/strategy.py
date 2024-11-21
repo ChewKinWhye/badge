@@ -138,6 +138,7 @@ class Strategy:
             start = time.time()
             for batch in tqdm.tqdm(loader_tr, disable=True):
                 loss_total = torch.tensor(0.0, requires_grad=True).cuda()
+                optimizer.zero_grad()
                 for loader_task, loader_meta in tasks:
                     task_model = maml.clone()  # torch.clone() for nn.Modules
                     x_meta, y_meta, p_meta, idxs_meta = next(loader_meta)
