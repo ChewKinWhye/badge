@@ -109,8 +109,8 @@ class Strategy:
 
         # Obtain train and validation dataset and loader
         tasks = []
-        for i in range(1, np.max(labelled_mask)+1):
-            idxs_task = np.arange(self.n_pool)[labelled_mask < i].astype(int)
+        for i in range(2, np.max(labelled_mask)+1):
+            idxs_task = np.arange(self.n_pool)[(labelled_mask < i) & (labelled_mask != 0)].astype(int)
             loader_task = DataLoader(self.handler([self.X[i] for i in idxs_task], torch.Tensor(self.Y[idxs_task]).long(),
                                    torch.Tensor(self.P[idxs_task]).long(), isTrain=True, target_resolution=self.target_resolution),
                                    shuffle=True, batch_size=self.args.batch_size)
@@ -162,8 +162,8 @@ class Strategy:
                 loss_total += criterion(logits, y)
                 loss_total.backward()
 
-                if self.args.architecture == "BERT":
-                    torch.nn.utils.clip_grad_norm_(maml.parameters(), 1.0)
+                torch.nn.utils.clip_grad_norm_(maml.parameters(), 1.0)
+
                 optimizer.step()
 
                 train_group_acc.update(logits.detach(), y, p)
