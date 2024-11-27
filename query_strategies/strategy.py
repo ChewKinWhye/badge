@@ -10,6 +10,7 @@ import numpy as np
 import torch
 import os
 import learn2learn as l2l
+import copy
 
 class Strategy:
     def __init__(self, X, Y, P, labelled_mask, handler, num_classes, num_attributes, num_epochs, target_resolution, test_group, args):
@@ -104,7 +105,7 @@ class Strategy:
         # Initialize model and optimizer
         self.clf = get_model(self.args.pretrained, self.args.architecture, self.num_classes)
         self.clf = self.clf.cuda()
-        maml = l2l.algorithms.MAML(self.clf, lr=self.args.lr, first_order=bool(self.args.first_order))
+        maml = l2l.algorithms.MAML(self.clf, lr=self.args.inner_lr, first_order=bool(self.args.first_order))
         optimizer = optim.Adam(maml.parameters(), lr=self.args.lr, weight_decay=self.args.weight_decay)
 
         # Obtain train and validation dataset and loader
@@ -181,6 +182,150 @@ class Strategy:
             # Save best model based on worst group accuracy
             if val_avg_acc > best_val_avg_acc:
                 torch.save(maml.module.state_dict(), os.path.join(self.args.save_dir, "ckpt.pt"))
+                best_val_avg_acc = val_avg_acc
+                best_epoch = epoch
+            # Print stats
+            if verbose:
+                print(f"Epoch {epoch} Loss: {ce_loss_meter.avg:.3f} Time Taken: {time.time() - start:.3f}")
+                print(f"Train Average Accuracy: {train_avg_acc:.3f} Train Majority/Best Accuracy: {train_majority_acc:.3f} "
+                    f"Train Minority/Worst Accuracy: {train_minority_acc:.3f}")
+                print(f"Val Average Accuracy: {val_avg_acc:.3f} Val Majority/Best Accuracy: {val_majority_acc:.3f} "
+                      f"Val Minority/Worst Accuracy: {val_minority_acc:.3f}")
+
+        # --- Train End ---
+        print(f'Best validation accuracy: {best_val_avg_acc:.3f} at epoch {best_epoch}')
+        state_dict = torch.load(os.path.join(self.args.save_dir, "ckpt.pt"))
+        self.clf = get_model(self.args.pretrained, self.args.architecture, self.num_classes)
+        self.clf = self.clf.cuda()
+        self.clf.load_state_dict(state_dict)
+        return state_dict
+
+    def train_MAML_sequential(self, labelled_mask, X_val, Y_val, P_val, verbose=True):
+        # Initialize model and optimizer
+        self.clf = get_model(self.args.pretrained, self.args.architecture, self.num_classes)
+        self.clf = self.clf.cuda()
+        optimizer = optim.Adam(self.clf.parameters(), lr=self.args.lr, weight_decay=self.args.weight_decay)
+
+        # Obtain train and validation dataset and loader
+        tasks, num_batches = [], 0
+        for i in range(1, np.max(labelled_mask)+1):
+            idxs_task = np.arange(self.n_pool)[labelled_mask == i].astype(int)
+            loader_task = DataLoader(self.handler([self.X[i] for i in idxs_task], torch.Tensor(self.Y[idxs_task]).long(),
+                             torch.Tensor(self.P[idxs_task]).long(), isTrain=True,target_resolution=self.target_resolution),
+                             shuffle=True, batch_size=self.args.batch_size)
+            tasks.append((infinite_dataloader(loader_task)))
+            num_batches = len(loader_task)
+
+        loader_val = DataLoader(self.handler(X_val, torch.Tensor(Y_val).long(), torch.Tensor(P_val).long(), isTrain=False, target_resolution=self.target_resolution),
+                               shuffle=False, batch_size=self.args.batch_size)
+
+        criterion = torch.nn.CrossEntropyLoss()
+
+        # --- Train Start ---
+        best_val_avg_acc, best_epoch = -1, None
+        for epoch in range(self.num_epochs):
+            self.clf.module.train()
+            # Track metrics
+            ce_loss_meter, train_group_acc = AverageMeter(), AverageGroupMeter(self.num_classes, self.num_attributes)
+            start = time.time()
+            for _ in range(num_batches):
+                for loader_task in tasks:
+                    optimizer.zero_grad()
+                    x, y, p, idxs = next(loader_task)
+                    x, y, p, idxs = x.cuda(), y.cuda(), p.cuda(), idxs.cuda()
+                    logits = self.clf(x)
+                    loss = criterion(logits, y)
+                    loss.backward()
+                    optimizer.step()
+                    # Monitor training stats
+                    ce_loss_meter.update(loss)
+                    train_group_acc.update(logits.detach(), y, p)
+
+            # Meta Evaluation, evaluate after updating on train dataset
+            self.clf.eval()
+
+            train_avg_acc, train_minority_acc, train_majority_acc = train_group_acc.get_stats(self.test_group)
+            val_avg_acc, val_minority_acc, val_majority_acc = self.evaluate_model(loader_val)
+
+            # Save best model based on worst group accuracy
+            if val_avg_acc > best_val_avg_acc:
+                torch.save(self.clf.module.state_dict(), os.path.join(self.args.save_dir, "ckpt.pt"))
+                best_val_avg_acc = val_avg_acc
+                best_epoch = epoch
+            # Print stats
+            if verbose:
+                print(f"Epoch {epoch} Loss: {ce_loss_meter.avg:.3f} Time Taken: {time.time() - start:.3f}")
+                print(f"Train Average Accuracy: {train_avg_acc:.3f} Train Majority/Best Accuracy: {train_majority_acc:.3f} "
+                    f"Train Minority/Worst Accuracy: {train_minority_acc:.3f}")
+                print(f"Val Average Accuracy: {val_avg_acc:.3f} Val Majority/Best Accuracy: {val_majority_acc:.3f} "
+                      f"Val Minority/Worst Accuracy: {val_minority_acc:.3f}")
+
+        # --- Train End ---
+        print(f'Best validation accuracy: {best_val_avg_acc:.3f} at epoch {best_epoch}')
+        state_dict = torch.load(os.path.join(self.args.save_dir, "ckpt.pt"))
+        self.clf = get_model(self.args.pretrained, self.args.architecture, self.num_classes)
+        self.clf = self.clf.cuda()
+        self.clf.load_state_dict(state_dict)
+        return state_dict
+
+    def train_MAML_sequential_step(self, labelled_mask, X_val, Y_val, P_val, verbose=True):
+        # Initialize model and optimizer
+        self.clf = get_model(self.args.pretrained, self.args.architecture, self.num_classes)
+        self.clf = self.clf.cuda()
+        optimizer = optim.Adam(self.clf.parameters(), lr=self.args.lr, weight_decay=self.args.weight_decay)
+
+        # Obtain train and validation dataset and loader
+        tasks, num_batches = [], 0
+        for i in range(1, np.max(labelled_mask)+1):
+            idxs_task = np.arange(self.n_pool)[labelled_mask == i].astype(int)
+            loader_task = DataLoader(self.handler([self.X[i] for i in idxs_task], torch.Tensor(self.Y[idxs_task]).long(),
+                             torch.Tensor(self.P[idxs_task]).long(), isTrain=True,target_resolution=self.target_resolution),
+                             shuffle=True, batch_size=self.args.batch_size)
+            tasks.append((infinite_dataloader(loader_task)))
+            num_batches = len(loader_task)
+
+        loader_val = DataLoader(self.handler(X_val, torch.Tensor(Y_val).long(), torch.Tensor(P_val).long(), isTrain=False, target_resolution=self.target_resolution),
+                               shuffle=False, batch_size=self.args.batch_size)
+
+        criterion = torch.nn.CrossEntropyLoss()
+
+        # --- Train Start ---
+        best_val_avg_acc, best_epoch = -1, None
+        for epoch in range(self.num_epochs):
+            self.clf.module.train()
+            # Track metrics
+            ce_loss_meter, train_group_acc = AverageMeter(), AverageGroupMeter(self.num_classes, self.num_attributes)
+            start = time.time()
+            for _ in range(num_batches):
+                optimizer.zero_grad()
+                clf_clone = copy.deepcopy(self.clf)
+                clone_optimizer = torch.optim.SGD(clf_clone.parameters(), lr=self.args.inner_lr, momentum=0)
+                for loader_task in tasks:
+                    clone_optimizer.zero_grad()
+                    x, y, p, idxs = next(loader_task)
+                    x, y, p, idxs = x.cuda(), y.cuda(), p.cuda(), idxs.cuda()
+                    logits = clf_clone(x)
+                    loss = criterion(logits, y)
+                    loss.backward()
+                    clone_optimizer.step()
+                    # Monitor training stats
+                    ce_loss_meter.update(loss)
+                    train_group_acc.update(logits.detach(), y, p)
+
+                with torch.no_grad():  # Avoid tracking gradients during manual assignment
+                    for param_clf, param_clone in zip(self.clf.parameters(), clf_clone.parameters()):
+                        # Compute the difference A - B and assign it as the gradient for model A
+                        param_clf.grad = param_clf.data - param_clone.data
+                optimizer.step()
+            # Meta Evaluation, evaluate after updating on train dataset
+            self.clf.eval()
+
+            train_avg_acc, train_minority_acc, train_majority_acc = train_group_acc.get_stats(self.test_group)
+            val_avg_acc, val_minority_acc, val_majority_acc = self.evaluate_model(loader_val)
+
+            # Save best model based on worst group accuracy
+            if val_avg_acc > best_val_avg_acc:
+                torch.save(self.clf.module.state_dict(), os.path.join(self.args.save_dir, "ckpt.pt"))
                 best_val_avg_acc = val_avg_acc
                 best_epoch = epoch
             # Print stats
