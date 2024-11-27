@@ -61,7 +61,7 @@ if __name__ == "__main__":
 
         # Draw Conclusions: Gain additional information
         if args.method == "meta":
-            strategy.train_MAML(labelled_mask, X_val, Y_val, P_val, verbose=False)
+            strategy.train_MAML(labelled_mask, X_val, Y_val, P_val, verbose=True)
         # Normal ERM
         else:
             strategy.train(X_val, Y_val, P_val, verbose=False)
