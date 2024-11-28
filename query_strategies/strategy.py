@@ -224,7 +224,7 @@ class Strategy:
         # --- Train Start ---
         best_val_avg_acc, best_epoch = -1, None
         for epoch in range(self.num_epochs):
-            self.clf.module.train()
+            self.clf.train()
             # Track metrics
             ce_loss_meter, train_group_acc = AverageMeter(), AverageGroupMeter(self.num_classes, self.num_attributes)
             start = time.time()
@@ -249,7 +249,7 @@ class Strategy:
 
             # Save best model based on worst group accuracy
             if val_avg_acc > best_val_avg_acc:
-                torch.save(self.clf.module.state_dict(), os.path.join(self.args.save_dir, "ckpt.pt"))
+                torch.save(self.clf.state_dict(), os.path.join(self.args.save_dir, "ckpt.pt"))
                 best_val_avg_acc = val_avg_acc
                 best_epoch = epoch
             # Print stats
@@ -292,7 +292,7 @@ class Strategy:
         # --- Train Start ---
         best_val_avg_acc, best_epoch = -1, None
         for epoch in range(self.num_epochs):
-            self.clf.module.train()
+            self.clf.train()
             # Track metrics
             ce_loss_meter, train_group_acc = AverageMeter(), AverageGroupMeter(self.num_classes, self.num_attributes)
             start = time.time()
@@ -325,7 +325,7 @@ class Strategy:
 
             # Save best model based on worst group accuracy
             if val_avg_acc > best_val_avg_acc:
-                torch.save(self.clf.module.state_dict(), os.path.join(self.args.save_dir, "ckpt.pt"))
+                torch.save(self.clf.state_dict(), os.path.join(self.args.save_dir, "ckpt.pt"))
                 best_val_avg_acc = val_avg_acc
                 best_epoch = epoch
             # Print stats
