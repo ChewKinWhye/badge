@@ -62,6 +62,8 @@ if __name__ == "__main__":
         # Draw Conclusions: Gain additional information
         if args.method == "mldg":
             strategy.train_MAML(labelled_mask, X_val, Y_val, P_val, verbose=True)
+        if args.method == "mldgc":
+            strategy.train_MAML_cumulative(labelled_mask, X_val, Y_val, P_val, verbose=True)
         elif args.method == "smldg":
             strategy.train_MAML_sequential(labelled_mask, X_val, Y_val, P_val, verbose=True)
         elif args.method == "smldgs":
