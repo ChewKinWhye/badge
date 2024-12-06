@@ -294,7 +294,7 @@ class Strategy:
                 ce_loss_meter.update(loss_total)
 
             # Meta Evaluation, evaluate after updating on train dataset
-            self.clf.module.eval()
+            self.clf.eval()
 
             train_avg_acc, train_minority_acc, train_majority_acc = train_group_acc.get_stats(self.test_group)
             val_avg_acc, val_minority_acc, val_majority_acc = self.evaluate_model(loader_val)

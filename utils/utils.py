@@ -30,7 +30,7 @@ def parse_args():
     parser.add_argument('--method', help='which method to use: [none, meta]', type=str, default='none')
     # MAML Args
     parser.add_argument('--inner_steps', help='Number of inner steps for meta learning (usually 1-5)', type=int, default=5)
-    parser.add_argument('--inner_lr', help='learning rate of inner meta-learning step', type=float, default=1e-2)
+    parser.add_argument('--inner_lr', help='learning rate of inner meta-learning step', type=float, default=1e-4)
     parser.add_argument('--first_order', help='whether to use first-order approximation', type=int, default=0)
 
     # Random Seed
@@ -48,7 +48,6 @@ def set_seed(seed):
     torch.manual_seed(seed)
     np.random.seed(seed)
     random.seed(seed)
-    torch.use_deterministic_algorithms(True)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 
