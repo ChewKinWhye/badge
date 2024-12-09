@@ -27,6 +27,7 @@ for k, v in sorted(vars(flags).items()):
     print("\t{}: {}".format(k, v))
 
 final_train_accs = []
+final_val_accs = []
 final_test_accs = []
 for restart in range(flags.n_restarts):
     print("Restart", restart)
@@ -36,6 +37,8 @@ for restart in range(flags.n_restarts):
     mnist = datasets.MNIST('~/datasets/mnist', train=True, download=True)
     mnist_train = (mnist.data[:50000], mnist.targets[:50000])
     mnist_val = (mnist.data[50000:], mnist.targets[50000:])
+    mnist_test = datasets.MNIST('~/datasets/mnist', train=False, download=True)
+    mnist_test = (mnist_test.data, mnist_test.targets)
 
     rng_state = np.random.get_state()
     np.random.shuffle(mnist_train[0].numpy())
@@ -71,7 +74,8 @@ for restart in range(flags.n_restarts):
     envs = [
         make_environment(mnist_train[0][::2], mnist_train[1][::2], 0.2),
         make_environment(mnist_train[0][1::2], mnist_train[1][1::2], 0.1),
-        make_environment(mnist_val[0], mnist_val[1], 0.9)
+        make_environment(mnist_val[0], mnist_val[1], 0.9),
+        make_environment(mnist_test[0], mnist_test[1], 0.9)
     ]
 
 
@@ -137,8 +141,8 @@ for restart in range(flags.n_restarts):
 
     optimizer = optim.Adam(mlp.parameters(), lr=flags.lr)
 
-    pretty_print('step', 'train nll', 'train acc', 'train penalty', 'test acc')
-
+    pretty_print('step', 'train nll', 'train acc', 'train penalty', 'val acc', 'test acc')
+    best_values = (0, 0, 0)
     for step in range(flags.steps):
         for env in envs:
             logits = mlp(env['images'])
@@ -167,19 +171,25 @@ for restart in range(flags.n_restarts):
         loss.backward()
         optimizer.step()
 
-        test_acc = envs[2]['acc']
+        val_acc = envs[2]['acc']
+        test_acc = envs[3]['acc']
         if step % 100 == 0:
             pretty_print(
                 np.int32(step),
                 train_nll.detach().cpu().numpy(),
                 train_acc.detach().cpu().numpy(),
                 train_penalty.detach().cpu().numpy(),
+                val_acc.detach().cpu().numpy(),
                 test_acc.detach().cpu().numpy()
             )
-
-    final_train_accs.append(train_acc.detach().cpu().numpy())
-    final_test_accs.append(test_acc.detach().cpu().numpy())
+        if val_acc.detach().cpu().numpy() > best_values[1]:
+            best_values = (train_acc.detach().cpu().numpy(), val_acc.detach().cpu().numpy(), test_acc.detach().cpu().numpy())
+    final_train_accs.append(best_values[0])
+    final_val_accs.append(best_values[1])
+    final_test_accs.append(best_values[2])
     print('Final train acc (mean/std across restarts so far):')
     print(np.mean(final_train_accs), np.std(final_train_accs))
+    print('Final val acc (mean/std across restarts so far):')
+    print(np.mean(final_val_accs), np.std(final_val_accs))
     print('Final test acc (mean/std across restarts so far):')
     print(np.mean(final_test_accs), np.std(final_test_accs))
