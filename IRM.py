@@ -4,6 +4,62 @@
 # This source code is licensed under the license found in the
 # LICENSE file in the root directory of this source tree.
 #
+import copy
+
+def torch_bernoulli(p, size):
+    return (torch.rand(size) < p)
+
+
+def color_mnist_images(images, numbers):
+    # Normalize the images to [0, 1] if they are not already
+    if images.max() > 1:
+        images = images / 255.0
+
+    # Define a fixed set of unique RGB colors for numbers 0-9
+    color_map = {
+        0: [255, 0, 0],     # Red
+        1: [0, 255, 0],     # Green
+        2: [0, 0, 255],     # Blue
+        3: [255, 255, 0],   # Yellow
+        4: [255, 0, 255],   # Magenta
+        5: [0, 255, 255],   # Cyan
+        6: [128, 128, 0],   # Olive
+        7: [128, 0, 128],   # Purple
+        8: [0, 128, 128],   # Teal
+        9: [128, 128, 128], # Gray
+    }
+
+    # Convert the color map to a tensor
+    color_map_tensor = torch.tensor([color_map[i] for i in range(10)], dtype=torch.float32)  # Shape: (10, 3)
+
+    # Initialize an empty tensor to hold the colored images
+    batch_size = images.shape[0]
+    colored_images = torch.zeros((batch_size, 3, 28, 28), dtype=torch.float32)
+
+    # Apply colors to each image based on the corresponding number
+    for i in range(batch_size):
+        rgb_color = color_map_tensor[numbers[i]]
+        for channel in range(3):
+            colored_images[i, channel, :, :] = images[i] * rgb_color[channel]
+
+    return colored_images
+
+def make_environment(images, labels, e):
+    # 2x subsample for computational convenience
+    images = images.reshape((-1, 28, 28))[:, ::2, ::2]
+    minority_mask = torch_bernoulli(e, len(labels))
+    colors = copy.deepcopy(labels)
+    colors[minority_mask] = torch.randint(0, 10, (torch.sum(minority_mask),))
+    # Assign a color based on the label; flip the color with probability e
+    # Apply the color to the image by zeroing out the other color channel
+    colored_images = color_mnist_images(images, colors)
+
+    label_noise_mask = torch_bernoulli(0.25, len(labels))
+    labels[label_noise_mask] = torch.randint(0, 10, (torch.sum(label_noise_mask),))
+    return {
+        'images': colored_images.cuda(),
+        'labels': labels[:, None].cuda()
+    }
 
 import argparse
 import numpy as np
@@ -31,9 +87,7 @@ final_val_accs = []
 final_test_accs = []
 for restart in range(flags.n_restarts):
     print("Restart", restart)
-
     # Load MNIST, make train/val splits, and shuffle train set examples
-
     mnist = datasets.MNIST('~/datasets/mnist', train=True, download=True)
     mnist_train = (mnist.data[:50000], mnist.targets[:50000])
     mnist_val = (mnist.data[50000:], mnist.targets[50000:])
@@ -45,37 +99,12 @@ for restart in range(flags.n_restarts):
     np.random.set_state(rng_state)
     np.random.shuffle(mnist_train[1].numpy())
 
-
     # Build environments
-
-    def make_environment(images, labels, e):
-        def torch_bernoulli(p, size):
-            return (torch.rand(size) < p).float()
-
-        def torch_xor(a, b):
-            return (a - b).abs()  # Assumes both inputs are either 0 or 1
-
-        # 2x subsample for computational convenience
-        images = images.reshape((-1, 28, 28))[:, ::2, ::2]
-        # Assign a binary label based on the digit; flip label with probability 0.25
-        labels = (labels < 5).float()
-        labels = torch_xor(labels, torch_bernoulli(0.25, len(labels)))
-        # Assign a color based on the label; flip the color with probability e
-        colors = torch_xor(labels, torch_bernoulli(e, len(labels)))
-        # Apply the color to the image by zeroing out the other color channel
-        images = torch.stack([images, images], dim=1)
-        images[torch.tensor(range(len(images))), (1 - colors).long(), :, :] *= 0
-        return {
-            'images': (images.float() / 255.).cuda(),
-            'labels': labels[:, None].cuda()
-        }
-
-
     envs = [
         make_environment(mnist_train[0][::2], mnist_train[1][::2], 0.2),
         make_environment(mnist_train[0][1::2], mnist_train[1][1::2], 0.1),
-        make_environment(mnist_val[0], mnist_val[1], 0.9),
-        make_environment(mnist_test[0], mnist_test[1], 0.9)
+        make_environment(mnist_val[0], mnist_val[1], 1.0),
+        make_environment(mnist_test[0], mnist_test[1], 1.0)
     ]
 
 
@@ -87,9 +116,9 @@ for restart in range(flags.n_restarts):
             if flags.grayscale_model:
                 lin1 = nn.Linear(14 * 14, flags.hidden_dim)
             else:
-                lin1 = nn.Linear(2 * 14 * 14, flags.hidden_dim)
+                lin1 = nn.Linear(3 * 14 * 14, flags.hidden_dim)
             lin2 = nn.Linear(flags.hidden_dim, flags.hidden_dim)
-            lin3 = nn.Linear(flags.hidden_dim, 1)
+            lin3 = nn.Linear(flags.hidden_dim, 10)
             for lin in [lin1, lin2, lin3]:
                 nn.init.xavier_uniform_(lin.weight)
                 nn.init.zeros_(lin.bias)
@@ -97,30 +126,26 @@ for restart in range(flags.n_restarts):
 
         def forward(self, input):
             if flags.grayscale_model:
-                out = input.view(input.shape[0], 2, 14 * 14).sum(dim=1)
+                out = input.view(input.shape[0], 3, 14 * 14).sum(dim=1)
             else:
-                out = input.view(input.shape[0], 2 * 14 * 14)
+                out = input.view(input.shape[0], 3 * 14 * 14)
             out = self._main(out)
             return out
 
 
     mlp = MLP().cuda()
 
-
-    # Define loss function helpers
-
-    def mean_nll(logits, y):
-        return nn.functional.binary_cross_entropy_with_logits(logits, y)
-
+    criterion = torch.nn.CrossEntropyLoss()
 
     def mean_accuracy(logits, y):
-        preds = (logits > 0.).float()
-        return ((preds - y).abs() < 1e-2).float().mean()
+        predictions = torch.argmax(logits, dim=1)
+        correct = (predictions == y).sum().item()
+        return correct / y.size(0) * 100
 
 
     def penalty(logits, y):
         scale = torch.tensor(1.).cuda().requires_grad_()
-        loss = mean_nll(logits * scale, y)
+        loss = criterion(logits * scale, y)
         grad = autograd.grad(loss, [scale], create_graph=True)[0]
         return torch.sum(grad ** 2)
 
@@ -146,7 +171,7 @@ for restart in range(flags.n_restarts):
     for step in range(flags.steps):
         for env in envs:
             logits = mlp(env['images'])
-            env['nll'] = mean_nll(logits, env['labels'])
+            env['nll'] = criterion(logits, env['labels'])
             env['acc'] = mean_accuracy(logits, env['labels'])
             env['penalty'] = penalty(logits, env['labels'])
 
