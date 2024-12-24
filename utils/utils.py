@@ -18,20 +18,20 @@ def parse_args():
     parser.add_argument("--spurious_strength", type=float, default=0.95, help="Strength of spurious correlation")
     # Training Args
     parser.add_argument('--lr', help='learning rate', type=float, default=1e-4)
-    parser.add_argument('--weight_decay', help='weight decay', type=float, default=1e-4)
-    parser.add_argument('--batch_size', help='batch size', type=int, default=64)
+    parser.add_argument('--weight_decay', help='weight decay', type=float, default=1e-2)
+    parser.add_argument('--batch_size', help='batch size', type=int, default=32)
     parser.add_argument('--num_epochs', help='Number of Training Epochs', type=int, default=100)
     # Active Learning Args
     parser.add_argument('--alg', help='acquisition algorithm, rand, conf, marg, badge, coreset', type=str, default='rand')
-    parser.add_argument('--nQuery', help='number of points to query in a batch', type=int, default=500)
-    parser.add_argument('--nStart', help='number of points to start', type=int, default=5000)
-    parser.add_argument('--nEnd', help='total number of points to query', type=int, default=10000)
+    parser.add_argument('--nQuery', help='number of points to query in a batch', type=int, default=100)
+    parser.add_argument('--nStart', help='number of points to start', type=int, default=4500)
+    parser.add_argument('--nEnd', help='total number of points to query', type=int, default=5000)
     # Method Args
     parser.add_argument('--method', help='which method to use: [none, meta]', type=str, default='none')
     # MAML Args
-    parser.add_argument('--inner_steps', help='Number of inner steps for meta learning (usually 1-5)', type=int, default=5)
+    parser.add_argument('--inner_steps', help='Number of inner steps for meta learning (usually 1-5)', type=int, default=1)
     parser.add_argument('--inner_lr', help='learning rate of inner meta-learning step', type=float, default=1e-4)
-    parser.add_argument('--first_order', help='whether to use first-order approximation', type=int, default=0)
+    parser.add_argument('--first_order', help='whether to use first-order approximation', type=int, default=1)
 
     # Random Seed
     parser.add_argument('--seed', help='random seed', type=int, default=0)

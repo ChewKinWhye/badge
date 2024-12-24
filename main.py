@@ -61,13 +61,13 @@ if __name__ == "__main__":
 
         # Draw Conclusions: Gain additional information
         if args.method == "mldg":
-            strategy.train_MAML(labelled_mask, X_val, Y_val, P_val, verbose=True)
+            strategy.train_MAML(labelled_mask, X_val, Y_val, P_val, verbose=False)
         if args.method == "mldgc":
-            strategy.train_MAML_cumulative(labelled_mask, X_val, Y_val, P_val, verbose=True)
+            strategy.train_MAML_cumulative(labelled_mask, X_val, Y_val, P_val, verbose=False)
         elif args.method == "smldg":
-            strategy.train_MAML_sequential(labelled_mask, X_val, Y_val, P_val, verbose=True)
+            strategy.train_MAML_sequential(labelled_mask, X_val, Y_val, P_val, verbose=False)
         elif args.method == "smldgs":
-            strategy.train_MAML_sequential_step(labelled_mask, X_val, Y_val, P_val, verbose=True)
+            strategy.train_MAML_sequential_step(labelled_mask, X_val, Y_val, P_val, verbose=False)
 
         # Normal ERM
         else:
