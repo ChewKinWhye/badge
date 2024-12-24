@@ -41,7 +41,10 @@ class Strategy:
         self.clf = self.clf.cuda()
         if state_dict is not None:
             self.clf.load_state_dict(state_dict)
-        optimizer = optim.Adam(self.clf.parameters(), lr=self.args.lr, weight_decay=self.args.weight_decay)
+        if self.args.architecture == "BERT":
+            optimizer = optim.AdamW(self.clf.parameters(), lr=self.args.lr, weight_decay=self.args.weight_decay)
+        else:
+            optimizer = optim.Adam(self.clf.parameters(), lr=self.args.lr, weight_decay=self.args.weight_decay)
 
         # Obtain train and validation dataset and loader
         idxs_train = np.arange(self.n_pool)[self.labelled_mask].astype(int)
