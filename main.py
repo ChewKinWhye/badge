@@ -75,6 +75,10 @@ if __name__ == "__main__":
 
         test_average_acc[rd], test_minority_acc[rd], test_majority_acc[rd] = strategy.evaluate_model(loader_test)
         # Print and Clean up
+        if args.dataset == "mcdominoes" or args.dataset == "spuco":
+            minority_count = np.sum(Y_tr[query_idxs] != P_tr[query_idxs])
+        elif args.dataset == "mcdominoes" == "celeba":
+            minority_count = np.sum((Y_tr[query_idxs] == 1) & (P_tr[query_idxs] == 1)) # y=1,p=1 maps to blonde male
         print(f"Round {rd}, Fraction of minority: {np.sum(Y_tr[query_idxs] != P_tr[query_idxs])}/{args.nQuery}, "
               f"Train Size: {np.sum(labelled_mask.astype(bool))}, Test Average Accuracy: {test_average_acc[rd]}, "
               f"Test Minority/Worst Accuracy: {test_minority_acc[rd]}, Test Majority/Best Accuracy: {test_majority_acc[rd]}")
