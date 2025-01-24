@@ -52,14 +52,14 @@ class Strategy:
         idxs_train = np.arange(self.n_pool)[self.labelled_mask].astype(int)
 
         # Resampling step
-        class_counts = Counter(self.Y[idxs_train].long())
+        class_counts = Counter(self.Y[idxs_train])
         total_samples = len(idxs_train)
-        sample_weights = [1.0 / class_counts[t] for t in self.Y[idxs_train].long()]
+        sample_weights = [1.0 / class_counts[t] for t in self.Y[idxs_train]]
         sample_weights = torch.DoubleTensor(sample_weights)
         sampler = WeightedRandomSampler(weights=sample_weights, num_samples=total_samples, replacement=True)
 
         loader_tr = DataLoader(self.handler([self.X[i] for i in idxs_train], torch.Tensor(self.Y[idxs_train]).long(), torch.Tensor(self.P[idxs_train]).long(), isTrain=True, target_resolution=self.target_resolution),
-                               shuffle=True, batch_size=self.args.batch_size, sampler=sampler)
+                               batch_size=self.args.batch_size, sampler=sampler)
         loader_val = DataLoader(self.handler(X_val, torch.Tensor(Y_val).long(), torch.Tensor(P_val).long(), isTrain=False, target_resolution=self.target_resolution),
                                shuffle=False, batch_size=self.args.batch_size)
 
@@ -223,31 +223,37 @@ class Strategy:
         for i in range(2, np.max(labelled_mask)+1):
             idxs_task = np.arange(self.n_pool)[(labelled_mask < i) & (labelled_mask != 0)].astype(int)
             # Resampling step
-            class_counts = Counter(self.Y[idxs_task].long())
+            class_counts = Counter(self.Y[idxs_task])
             total_samples = len(idxs_task)
-            sample_weights = [1.0 / class_counts[t] for t in self.Y[idxs_task].long()]
+            sample_weights = [1.0 / class_counts[t] for t in self.Y[idxs_task]]
             sample_weights = torch.DoubleTensor(sample_weights)
             sampler = WeightedRandomSampler(weights=sample_weights, num_samples=total_samples, replacement=True)
 
             loader_task = DataLoader(self.handler([self.X[i] for i in idxs_task], torch.Tensor(self.Y[idxs_task]).long(),
                                    torch.Tensor(self.P[idxs_task]).long(), isTrain=True, target_resolution=self.target_resolution),
-                                   shuffle=True, batch_size=self.args.batch_size, sampler=sampler)
+                                   batch_size=self.args.batch_size, sampler=sampler)
             idxs_meta = np.arange(self.n_pool)[labelled_mask == i].astype(int)
+
+            class_counts = Counter(self.Y[idxs_meta])
+            total_samples = len(idxs_meta)
+            sample_weights = [1.0 / class_counts[t] for t in self.Y[idxs_meta]]
+            sample_weights = torch.DoubleTensor(sample_weights)
+            sampler = WeightedRandomSampler(weights=sample_weights, num_samples=total_samples, replacement=True)
             loader_meta = DataLoader(self.handler([self.X[i] for i in idxs_meta], torch.Tensor(self.Y[idxs_meta]).long(),
                              torch.Tensor(self.P[idxs_meta]).long(), isTrain=True,target_resolution=self.target_resolution),
-                             shuffle=True, batch_size=self.args.batch_size)
+                             batch_size=self.args.batch_size, sampler=sampler)
             tasks.append((infinite_dataloader(loader_task), infinite_dataloader(loader_meta)))
 
         idxs_train = np.arange(self.n_pool)[self.labelled_mask].astype(int)
         # Resampling step
-        class_counts = Counter(self.Y[idxs_train].long())
+        class_counts = Counter(self.Y[idxs_train])
         total_samples = len(idxs_train)
-        sample_weights = [1.0 / class_counts[t] for t in self.Y[idxs_train].long()]
+        sample_weights = [1.0 / class_counts[t] for t in self.Y[idxs_train]]
         sample_weights = torch.DoubleTensor(sample_weights)
         sampler = WeightedRandomSampler(weights=sample_weights, num_samples=total_samples, replacement=True)
 
         loader_tr = DataLoader(self.handler([self.X[i] for i in idxs_train], torch.Tensor(self.Y[idxs_train]).long(), torch.Tensor(self.P[idxs_train]).long(), isTrain=True, target_resolution=self.target_resolution),
-                               shuffle=True, batch_size=self.args.batch_size, sampler=sampler)
+                               batch_size=self.args.batch_size, sampler=sampler)
         loader_val = DataLoader(self.handler(X_val, torch.Tensor(Y_val).long(), torch.Tensor(P_val).long(), isTrain=False, target_resolution=self.target_resolution),
                                shuffle=False, batch_size=self.args.batch_size)
 

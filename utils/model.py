@@ -20,7 +20,8 @@ class BertWrapper(torch.nn.Module):
 def get_model(pretrained, model, num_classes):
     weights = {"resnet18": ResNet18_Weights,
                "resnet50": ResNet50_Weights,
-               "ViT": ViT_B_16_Weights}
+               "ViT": ViT_B_16_Weights,
+               "BERT": None}
     if pretrained:
         weights = weights[model]
     else:

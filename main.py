@@ -77,9 +77,13 @@ if __name__ == "__main__":
         # Print and Clean up
         if args.dataset == "mcdominoes" or args.dataset == "spuco":
             minority_count = np.sum(Y_tr[query_idxs] != P_tr[query_idxs])
-        elif args.dataset == "mcdominoes" == "celeba":
+        elif args.dataset == "celeba":
             minority_count = np.sum((Y_tr[query_idxs] == 1) & (P_tr[query_idxs] == 1)) # y=1,p=1 maps to blonde male
-        print(f"Round {rd}, Fraction of minority: {np.sum(Y_tr[query_idxs] != P_tr[query_idxs])}/{args.nQuery}, "
+        elif args.dataset == "multinli":
+            minority_count = np.sum((Y_tr[query_idxs] == 1) & (P_tr[query_idxs] == 1)) + np.sum((Y_tr[query_idxs] == 2) & (P_tr[query_idxs] == 1)) # entailment or neutral statements with negations
+        elif args.dataset == "civilcomments":
+            minority_count = np.sum((Y_tr[query_idxs] == 0) & (P_tr[query_idxs] == 0)) + np.sum((Y_tr[query_idxs] == 1) & (P_tr[query_idxs] == 1)) # Identity non-toxic or no identity toxic
+        print(f"Round {rd}, Fraction of minority: {minority_count}/{args.nQuery}, "
               f"Train Size: {np.sum(labelled_mask.astype(bool))}, Test Average Accuracy: {test_average_acc[rd]}, "
               f"Test Minority/Worst Accuracy: {test_minority_acc[rd]}, Test Majority/Best Accuracy: {test_majority_acc[rd]}")
         torch.cuda.empty_cache()
