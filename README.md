@@ -36,10 +36,10 @@ To obtain the datasets required to run the code, please refer to [FacebookResear
     - `metadata_random.csv`
 
 # Running an experiment
-`python main.py --dataset mcdominoes  --architecture resnet18 --alg BADGE --method none --seed 0`\
+`python main.py --dataset mcdominoes  --architecture resnet18 --alg badge --method none --seed 0`\
 runs the BADGE algorithm on the mcdominoes dataset using the resnet18 model, using the default random shuffling of the actively queried data points.
 
-`python main.py --dataset mcdominoes  --architecture resnet18 --alg BADGE --method mldgc --seed 0`\
+`python main.py --dataset mcdominoes  --architecture resnet18 --alg badge --method mldgc --seed 0`\
 runs the BADGE algorithm on the mcdominoes dataset using the resnet18 model, using the CAML method to integrate the actively queried data points.
 
 The script to run the full set of experiments can be found in `scripts/`
