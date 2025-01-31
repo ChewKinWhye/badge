@@ -1,4 +1,4 @@
-from query_strategies import RandomSampling, BadgeSampling, LeastConfidence, MarginSampling, EntropySampling, CoreSet
+from query_strategies import RandomSampling, BadgeSampling, LeastConfidence, CoreSet
 from utils.dataset import get_data
 from utils.utils import parse_args, set_seed
 from torch.utils.data import DataLoader
@@ -59,16 +59,8 @@ if __name__ == "__main__":
         labelled_mask[query_idxs] = rd + 1
         strategy.update(labelled_mask)
 
-        # Draw Conclusions: Gain additional information
-        if args.method == "mldg":
-            strategy.train_MAML(labelled_mask, X_val, Y_val, P_val, verbose=False)
         if args.method == "mldgc":
             strategy.train_MAML_cumulative(labelled_mask, X_val, Y_val, P_val, verbose=False)
-        elif args.method == "smldg":
-            strategy.train_MAML_sequential(labelled_mask, X_val, Y_val, P_val, verbose=False)
-        elif args.method == "smldgs":
-            strategy.train_MAML_sequential_step(labelled_mask, X_val, Y_val, P_val, verbose=False)
-
         # Normal ERM
         else:
             strategy.train(X_val, Y_val, P_val, verbose=False)
@@ -82,7 +74,7 @@ if __name__ == "__main__":
         elif args.dataset == "multinli":
             minority_count = np.sum((Y_tr[query_idxs] == 1) & (P_tr[query_idxs] == 1)) + np.sum((Y_tr[query_idxs] == 2) & (P_tr[query_idxs] == 1)) # entailment or neutral statements with negations
         elif args.dataset == "civilcomments":
-            minority_count = np.sum((Y_tr[query_idxs] == 0) & (P_tr[query_idxs] == 0)) + np.sum((Y_tr[query_idxs] == 1) & (P_tr[query_idxs] == 1)) # Identity non-toxic or no identity toxic
+            minority_count = np.sum((Y_tr[query_idxs] == 1) & (P_tr[query_idxs] == 1)) # No identity and toxic
         print(f"Round {rd}, Fraction of minority: {minority_count}/{args.nQuery}, "
               f"Train Size: {np.sum(labelled_mask.astype(bool))}, Test Average Accuracy: {test_average_acc[rd]}, "
               f"Test Minority/Worst Accuracy: {test_minority_acc[rd]}, Test Majority/Best Accuracy: {test_majority_acc[rd]}")

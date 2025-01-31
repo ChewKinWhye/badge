@@ -1,7 +1,5 @@
 import os
 import pickle
-from PIL import Image
-import torchvision.transforms as transforms
 from torch.utils.data import Dataset
 import numpy as np
 import torch

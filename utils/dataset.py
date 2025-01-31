@@ -3,7 +3,6 @@ import os
 
 from utils.mcdominoes import get_mcdominoes, MCDOMINOES
 from utils.spuco import get_spuco, SPUCO
-from utils.spawrious import get_spawrious, SPAWRIOUS
 from utils.celeba import get_celeba, CELEBA
 from utils.multinli import get_multinli, MULTINLI
 from utils.civilcomments import get_civilcomments, CIVILCOMMENTS
