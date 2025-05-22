@@ -10,8 +10,7 @@ import numpy as np
 import torch
 import os
 import copy
-from collections import Counter
-from torch.utils.data import WeightedRandomSampler
+import higher
 
 class Strategy:
     def __init__(self, X, Y, P, labelled_mask, handler, num_classes, num_attributes, num_epochs, target_resolution, test_group, args):
@@ -50,15 +49,8 @@ class Strategy:
         # Obtain train and validation dataset and loader
         idxs_train = np.arange(self.n_pool)[self.labelled_mask].astype(int)
 
-        # Resampling step
-        class_counts = Counter(self.Y[idxs_train])
-        total_samples = len(idxs_train)
-        sample_weights = [1.0 / class_counts[t] for t in self.Y[idxs_train]]
-        sample_weights = torch.DoubleTensor(sample_weights)
-        sampler = WeightedRandomSampler(weights=sample_weights, num_samples=total_samples, replacement=True)
-
         loader_tr = DataLoader(self.handler([self.X[i] for i in idxs_train], torch.Tensor(self.Y[idxs_train]).long(), torch.Tensor(self.P[idxs_train]).long(), isTrain=True, target_resolution=self.target_resolution),
-                               batch_size=self.args.batch_size, sampler=sampler)
+                               batch_size=self.args.batch_size, shuffle=True)
         loader_val = DataLoader(self.handler(X_val, torch.Tensor(Y_val).long(), torch.Tensor(P_val).long(), isTrain=False, target_resolution=self.target_resolution),
                                shuffle=False, batch_size=self.args.batch_size)
 
@@ -112,48 +104,24 @@ class Strategy:
         return state_dict
 
 
-    def train_MAML_cumulative(self, labelled_mask, X_val, Y_val, P_val, verbose=True):
+    def train_meta(self, labelled_mask, X_val, Y_val, P_val, verbose=True):
         # Initialize model and optimizer
         self.clf = get_model(self.args.pretrained, self.args.architecture, self.num_classes)
         self.clf = self.clf.cuda()
         optimizer = optim.Adam(self.clf.parameters(), lr=self.args.lr, weight_decay=self.args.weight_decay)
 
         # Obtain train and validation dataset and loader
-        tasks = []
-        for i in range(2, np.max(labelled_mask)+1):
-            idxs_task = np.arange(self.n_pool)[(labelled_mask < i) & (labelled_mask != 0)].astype(int)
-            # Resampling step
-            class_counts = Counter(self.Y[idxs_task])
-            total_samples = len(idxs_task)
-            sample_weights = [1.0 / class_counts[t] for t in self.Y[idxs_task]]
-            sample_weights = torch.DoubleTensor(sample_weights)
-            sampler = WeightedRandomSampler(weights=sample_weights, num_samples=total_samples, replacement=True)
+        idxs_metatrain = np.arange(self.n_pool)[(labelled_mask < np.max(labelled_mask)) & (labelled_mask != 0)].astype(int)
+        idxs_metatest = np.arange(self.n_pool)[(labelled_mask == np.max(labelled_mask))].astype(int)
 
-            loader_task = DataLoader(self.handler([self.X[i] for i in idxs_task], torch.Tensor(self.Y[idxs_task]).long(),
-                                   torch.Tensor(self.P[idxs_task]).long(), isTrain=True, target_resolution=self.target_resolution),
-                                   batch_size=self.args.batch_size, sampler=sampler)
-            idxs_meta = np.arange(self.n_pool)[labelled_mask == i].astype(int)
+        loader_metatrain = DataLoader(self.handler([self.X[i] for i in idxs_metatrain], torch.Tensor(self.Y[idxs_metatrain]).long(), torch.Tensor(self.P[idxs_metatrain]).long(), isTrain=True, target_resolution=self.target_resolution),
+                               batch_size=self.args.batch_size, sampler=idxs_metatrain)
+        dataset_weights = torch.nn.Parameter(torch.ones(len(idxs_metatrain)), requires_grad=True).cuda()
+        weight_optimizer = optim.Adam([dataset_weights], lr=0.1)
 
-            class_counts = Counter(self.Y[idxs_meta])
-            total_samples = len(idxs_meta)
-            sample_weights = [1.0 / class_counts[t] for t in self.Y[idxs_meta]]
-            sample_weights = torch.DoubleTensor(sample_weights)
-            sampler = WeightedRandomSampler(weights=sample_weights, num_samples=total_samples, replacement=True)
-            loader_meta = DataLoader(self.handler([self.X[i] for i in idxs_meta], torch.Tensor(self.Y[idxs_meta]).long(),
-                             torch.Tensor(self.P[idxs_meta]).long(), isTrain=True,target_resolution=self.target_resolution),
-                             batch_size=self.args.batch_size, sampler=sampler)
-            tasks.append((infinite_dataloader(loader_task), infinite_dataloader(loader_meta)))
+        loader_metatest = infinite_dataloader(DataLoader(self.handler([self.X[i] for i in idxs_metatest], torch.Tensor(self.Y[idxs_metatest]).long(), torch.Tensor(self.P[idxs_metatest]).long(), isTrain=True, target_resolution=self.target_resolution),
+                               batch_size=self.args.batch_size, sampler=idxs_metatest))
 
-        idxs_train = np.arange(self.n_pool)[self.labelled_mask].astype(int)
-        # Resampling step
-        class_counts = Counter(self.Y[idxs_train])
-        total_samples = len(idxs_train)
-        sample_weights = [1.0 / class_counts[t] for t in self.Y[idxs_train]]
-        sample_weights = torch.DoubleTensor(sample_weights)
-        sampler = WeightedRandomSampler(weights=sample_weights, num_samples=total_samples, replacement=True)
-
-        loader_tr = DataLoader(self.handler([self.X[i] for i in idxs_train], torch.Tensor(self.Y[idxs_train]).long(), torch.Tensor(self.P[idxs_train]).long(), isTrain=True, target_resolution=self.target_resolution),
-                               batch_size=self.args.batch_size, sampler=sampler)
         loader_val = DataLoader(self.handler(X_val, torch.Tensor(Y_val).long(), torch.Tensor(P_val).long(), isTrain=False, target_resolution=self.target_resolution),
                                shuffle=False, batch_size=self.args.batch_size)
 
@@ -167,64 +135,23 @@ class Strategy:
             # Track metrics
             ce_loss_meter, train_group_acc = AverageMeter(), AverageGroupMeter(self.num_classes, self.num_attributes)
             start = time.time()
-            for batch in tqdm.tqdm(loader_tr, disable=True):
-                loss_total = 0
-                optimizer.zero_grad()
-                cumulative_meta_grads = None
-                for idx, (loader_task, loader_meta) in enumerate(tasks):
-                    task_model = copy.deepcopy(self.clf)
-                    # Update on task
-                    x, y, p, idxs = next(loader_task)
-                    x, y, p, idxs = x.cuda(), y.cuda(), p.cuda(), idxs.cuda()
-                    logits = task_model(x)
-                    loss = criterion(logits, y)
-                    loss.backward()
-                    with torch.no_grad():
-                        for name, param in task_model.named_parameters():
-                            if param.grad is not None:  # Ensure the parameter has gradients
-                                if cumulative_meta_grads is None:
-                                    param -= self.args.inner_lr * param.grad  # Gradient descent step
-                                else:
-                                    param -= self.args.inner_lr * (param.grad + cumulative_meta_grads[name] / idx)
-                                param.grad.zero_()  # Manually zero the gradients
-                    # Compute meta-loss
-                    x_meta, y_meta, p_meta, idxs_meta = next(loader_meta)
-                    x_meta, y_meta, p_meta, idxs_meta = x_meta.cuda(), y_meta.cuda(), p_meta.cuda(), idxs_meta.cuda()
-                    logits_meta = task_model(x_meta)
-                    meta_loss = criterion(logits_meta, y_meta)
-                    # Call backwards for each task to accumulate the gradients, more computationally expensive but prevents OOM
-                    meta_loss.backward()
-                    # Store meta-gradients
-                    with torch.no_grad():
-                        if cumulative_meta_grads is None:
-                            cumulative_meta_grads = {}
-                            for name, param in task_model.named_parameters():
-                                if param.grad is not None:
-                                    cumulative_meta_grads[name] = param.grad.clone()  # Use clone() to store a copy
-                        else:
-                            for name, param in task_model.named_parameters():
-                                if param.grad is not None:
-                                    cumulative_meta_grads[name] += param.grad.clone()  # Use clone() to store a copy
-
-                # Train-Loss
+            for batch in tqdm.tqdm(loader_metatrain, disable=True):
                 x, y, p, idxs = batch
                 x, y, p, idxs = x.cuda(), y.cuda(), p.cuda(), idxs.cuda()
-                logits = self.clf(x)
-                ce_loss = criterion(logits, y)
-                ce_loss.backward()
-                with torch.no_grad():
-                    for name, param in self.clf.named_parameters():
-                        if param.grad is not None:
-                            param.grad += cumulative_meta_grads[name] / len(tasks)
-                loss_total += ce_loss.item()
+                sample_weights = dataset_weights[idxs]
+                weight_optimizer.zero_grad()
+                with higher.innerloop_ctx(self.clf, optimizer, copy_initial_weights=False) as (fnet, diffopt):
+                    logits = fnet(x)
+                    sample_loss = torch.nn.CrossEntropyLoss(reduction='none')(logits, y)
+                    loss = torch.sum(sample_loss * sample_weights)
+                    diffopt.step(loss)
 
-                torch.nn.utils.clip_grad_norm_(self.clf.parameters(), 1.0)
-
-                optimizer.step()
-
-                train_group_acc.update(logits.detach(), y, p)
-                # Monitor training stats
-                ce_loss_meter.update(loss_total)
+                    x_meta, y_meta, p_meta, idxs_meta = next(loader_metatest)
+                    x_meta, y_meta, p_meta, idxs_meta = x_meta.cuda(), y_meta.cuda(), p_meta.cuda(), idxs_meta.cuda()
+                    logits_meta = fnet(x_meta)
+                    meta_loss = criterion(logits_meta, y_meta)
+                    meta_loss.backward()
+                weight_optimizer.step()
 
             # Meta Evaluation, evaluate after updating on train dataset
             self.clf.eval()
@@ -244,6 +171,8 @@ class Strategy:
                     f"Train Minority/Worst Accuracy: {train_minority_acc:.3f}")
                 print(f"Val Average Accuracy: {val_avg_acc:.3f} Val Majority/Best Accuracy: {val_majority_acc:.3f} "
                       f"Val Minority/Worst Accuracy: {val_minority_acc:.3f}")
+                print(f"Average Minority Weight: {torch.mean(dataset_weights[self.Y[idxs_metatrain]!=self.P[idxs_metatrain]])}")
+                print(f"Average Majority Weight: {torch.mean(dataset_weights[self.Y[idxs_metatrain]==self.P[idxs_metatrain]])}")
 
         # --- Train End ---
         print(f'Best validation accuracy: {best_val_min_acc:.3f} at epoch {best_epoch}')
@@ -252,7 +181,6 @@ class Strategy:
         self.clf = self.clf.cuda()
         self.clf.load_state_dict(state_dict)
         return state_dict
-
 
     def evaluate_model(self, loader, model=None):
         if model is None:

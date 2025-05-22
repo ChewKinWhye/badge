@@ -59,8 +59,8 @@ if __name__ == "__main__":
         labelled_mask[query_idxs] = rd + 1
         strategy.update(labelled_mask)
 
-        if args.method == "mldgc":
-            strategy.train_MAML_cumulative(labelled_mask, X_val, Y_val, P_val, verbose=False)
+        if args.method == "meta":
+            strategy.train_meta(labelled_mask, X_val, Y_val, P_val, verbose=False)
         # Normal ERM
         else:
             strategy.train(X_val, Y_val, P_val, verbose=False)
