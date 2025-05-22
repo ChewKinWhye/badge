@@ -61,6 +61,8 @@ if __name__ == "__main__":
 
         if args.method == "meta":
             strategy.train_meta(labelled_mask, X_val, Y_val, P_val, verbose=False)
+        elif args.method == "maml":
+            strategy.train_maml(labelled_mask, X_val, Y_val, P_val, verbose=False)
         # Normal ERM
         else:
             strategy.train(X_val, Y_val, P_val, verbose=False)

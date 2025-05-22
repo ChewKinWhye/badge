@@ -182,6 +182,82 @@ class Strategy:
         self.clf.load_state_dict(state_dict)
         return state_dict
 
+
+    def train_maml(self, labelled_mask, X_val, Y_val, P_val, verbose=True):
+        # Initialize model and optimizer
+        self.clf = get_model(self.args.pretrained, self.args.architecture, self.num_classes)
+        self.clf = self.clf.cuda()
+        optimizer = optim.Adam(self.clf.parameters(), lr=self.args.lr, weight_decay=self.args.weight_decay)
+
+        # Obtain train and validation dataset and loader
+        idxs_metatrain = np.arange(self.n_pool)[(labelled_mask < np.max(labelled_mask)) & (labelled_mask != 0)].astype(int)
+        idxs_metatest = np.arange(self.n_pool)[(labelled_mask == np.max(labelled_mask))].astype(int)
+
+        loader_metatrain = DataLoader(self.handler([self.X[i] for i in idxs_metatrain], torch.Tensor(self.Y[idxs_metatrain]).long(), torch.Tensor(self.P[idxs_metatrain]).long(), isTrain=True, target_resolution=self.target_resolution),
+                               batch_size=self.args.batch_size, sampler=idxs_metatrain)
+
+        loader_metatest = infinite_dataloader(DataLoader(self.handler([self.X[i] for i in idxs_metatest], torch.Tensor(self.Y[idxs_metatest]).long(), torch.Tensor(self.P[idxs_metatest]).long(), isTrain=True, target_resolution=self.target_resolution),
+                               batch_size=self.args.batch_size, sampler=idxs_metatest))
+
+        loader_val = DataLoader(self.handler(X_val, torch.Tensor(Y_val).long(), torch.Tensor(P_val).long(), isTrain=False, target_resolution=self.target_resolution),
+                               shuffle=False, batch_size=self.args.batch_size)
+
+        criterion = torch.nn.CrossEntropyLoss()
+
+        # --- Train Start ---
+        best_val_min_acc, best_epoch = -1, None
+
+        for epoch in range(self.num_epochs):
+            self.clf.train()
+            # Track metrics
+            ce_loss_meter, train_group_acc = AverageMeter(), AverageGroupMeter(self.num_classes, self.num_attributes)
+            start = time.time()
+            for batch in tqdm.tqdm(loader_metatrain, disable=True):
+                x, y, p, idxs = batch
+                x, y, p, idxs = x.cuda(), y.cuda(), p.cuda(), idxs.cuda()
+                optimizer.zero_grad()
+                with higher.innerloop_ctx(self.clf, optimizer, copy_initial_weights=False) as (fnet, diffopt):
+                    logits = fnet(x)
+                    loss = criterion(logits, y)
+                    diffopt.step(loss)
+
+                    x_meta, y_meta, p_meta, idxs_meta = next(loader_metatest)
+                    x_meta, y_meta, p_meta, idxs_meta = x_meta.cuda(), y_meta.cuda(), p_meta.cuda(), idxs_meta.cuda()
+                    logits_meta = fnet(x_meta)
+                    meta_loss = criterion(logits_meta, y_meta)
+                    meta_loss.backward()
+                logits = self.clf(x)
+                loss = criterion(logits, y)
+                loss.backward()
+                optimizer.step()
+
+            # Meta Evaluation, evaluate after updating on train dataset
+            self.clf.eval()
+
+            train_avg_acc, train_minority_acc, train_majority_acc = train_group_acc.get_stats(self.test_group)
+            val_avg_acc, val_minority_acc, val_majority_acc = self.evaluate_model(loader_val)
+
+            # Save best model based on worst group accuracy
+            if val_minority_acc > best_val_min_acc:
+                torch.save(self.clf.state_dict(), os.path.join(self.args.save_dir, "ckpt.pt"))
+                best_val_min_acc = val_minority_acc
+                best_epoch = epoch
+            # Print stats
+            if verbose:
+                print(f"Epoch {epoch} Loss: {ce_loss_meter.avg:.3f} Time Taken: {time.time() - start:.3f}")
+                print(f"Train Average Accuracy: {train_avg_acc:.3f} Train Majority/Best Accuracy: {train_majority_acc:.3f} "
+                    f"Train Minority/Worst Accuracy: {train_minority_acc:.3f}")
+                print(f"Val Average Accuracy: {val_avg_acc:.3f} Val Majority/Best Accuracy: {val_majority_acc:.3f} "
+                      f"Val Minority/Worst Accuracy: {val_minority_acc:.3f}")
+
+        # --- Train End ---
+        print(f'Best validation accuracy: {best_val_min_acc:.3f} at epoch {best_epoch}')
+        state_dict = torch.load(os.path.join(self.args.save_dir, "ckpt.pt"))
+        self.clf = get_model(self.args.pretrained, self.args.architecture, self.num_classes)
+        self.clf = self.clf.cuda()
+        self.clf.load_state_dict(state_dict)
+        return state_dict
+
     def evaluate_model(self, loader, model=None):
         if model is None:
             model = self.clf
