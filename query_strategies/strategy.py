@@ -115,12 +115,12 @@ class Strategy:
         idxs_metatest = np.arange(self.n_pool)[(labelled_mask == np.max(labelled_mask))].astype(int)
 
         loader_metatrain = DataLoader(self.handler([self.X[i] for i in idxs_metatrain], torch.Tensor(self.Y[idxs_metatrain]).long(), torch.Tensor(self.P[idxs_metatrain]).long(), isTrain=True, target_resolution=self.target_resolution),
-                               batch_size=self.args.batch_size, sampler=idxs_metatrain)
-        dataset_weights = torch.nn.Parameter(torch.ones(len(idxs_metatrain)), requires_grad=True).cuda()
+                               batch_size=self.args.batch_size, shuffle=True)
+        dataset_weights = torch.nn.Parameter(torch.ones(len(idxs_metatrain)).cuda(), requires_grad=True)
         weight_optimizer = optim.Adam([dataset_weights], lr=0.1)
 
         loader_metatest = infinite_dataloader(DataLoader(self.handler([self.X[i] for i in idxs_metatest], torch.Tensor(self.Y[idxs_metatest]).long(), torch.Tensor(self.P[idxs_metatest]).long(), isTrain=True, target_resolution=self.target_resolution),
-                               batch_size=self.args.batch_size, sampler=idxs_metatest))
+                               batch_size=self.args.batch_size, shuffle=True))
 
         loader_val = DataLoader(self.handler(X_val, torch.Tensor(Y_val).long(), torch.Tensor(P_val).long(), isTrain=False, target_resolution=self.target_resolution),
                                shuffle=False, batch_size=self.args.batch_size)
@@ -150,6 +150,7 @@ class Strategy:
                     x_meta, y_meta, p_meta, idxs_meta = x_meta.cuda(), y_meta.cuda(), p_meta.cuda(), idxs_meta.cuda()
                     logits_meta = fnet(x_meta)
                     meta_loss = criterion(logits_meta, y_meta)
+                    weight_optimizer.zero_grad()
                     meta_loss.backward()
                 weight_optimizer.step()
 
@@ -187,17 +188,17 @@ class Strategy:
         # Initialize model and optimizer
         self.clf = get_model(self.args.pretrained, self.args.architecture, self.num_classes)
         self.clf = self.clf.cuda()
-        optimizer = optim.Adam(self.clf.parameters(), lr=self.args.lr, weight_decay=self.args.weight_decay)
+        optimizer = optim.Adam(self.clf.parameters(), lr=1e-2, weight_decay=self.args.weight_decay)
 
         # Obtain train and validation dataset and loader
         idxs_metatrain = np.arange(self.n_pool)[(labelled_mask < np.max(labelled_mask)) & (labelled_mask != 0)].astype(int)
         idxs_metatest = np.arange(self.n_pool)[(labelled_mask == np.max(labelled_mask))].astype(int)
 
         loader_metatrain = DataLoader(self.handler([self.X[i] for i in idxs_metatrain], torch.Tensor(self.Y[idxs_metatrain]).long(), torch.Tensor(self.P[idxs_metatrain]).long(), isTrain=True, target_resolution=self.target_resolution),
-                               batch_size=self.args.batch_size, sampler=idxs_metatrain)
+                               batch_size=self.args.batch_size, shuffle=True)
 
         loader_metatest = infinite_dataloader(DataLoader(self.handler([self.X[i] for i in idxs_metatest], torch.Tensor(self.Y[idxs_metatest]).long(), torch.Tensor(self.P[idxs_metatest]).long(), isTrain=True, target_resolution=self.target_resolution),
-                               batch_size=self.args.batch_size, sampler=idxs_metatest))
+                               batch_size=self.args.batch_size, shuffle=True))
 
         loader_val = DataLoader(self.handler(X_val, torch.Tensor(Y_val).long(), torch.Tensor(P_val).long(), isTrain=False, target_resolution=self.target_resolution),
                                shuffle=False, batch_size=self.args.batch_size)
@@ -225,6 +226,7 @@ class Strategy:
                     x_meta, y_meta, p_meta, idxs_meta = x_meta.cuda(), y_meta.cuda(), p_meta.cuda(), idxs_meta.cuda()
                     logits_meta = fnet(x_meta)
                     meta_loss = criterion(logits_meta, y_meta)
+                    optimizer.zero_grad()
                     meta_loss.backward()
                 logits = self.clf(x)
                 loss = criterion(logits, y)

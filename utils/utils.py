@@ -9,19 +9,19 @@ def parse_args():
     parser.add_argument('--architecture', help='model - resnet18, resnet50, BERT', type=str, default='resnet18')
     parser.add_argument("--pretrained", type=int, default=1, help="Use pretrained model")
     # Data Args
-    parser.add_argument('--data_dir', help='data path', type=str, default='data')
+    parser.add_argument('--data_dir', help='data path', type=str, default='/scratch/kinwhye/data')
     parser.add_argument('--dataset', help='dataset, mcdominoes, spuco, celeba, multinli, civilcomments', type=str, default='mcdominoes')
     parser.add_argument("--spurious_strength", type=float, default=0.95, help="Strength of spurious correlation, only tunable for some datasets")
     # Training Args
     parser.add_argument('--lr', help='learning rate', type=float, default=1e-4)
-    parser.add_argument('--weight_decay', help='weight decay', type=float, default=1e-2)
+    parser.add_argument('--weight_decay', help='weight decay', type=float, default=1e-4)
     parser.add_argument('--batch_size', help='batch size', type=int, default=32)
     parser.add_argument('--num_epochs', help='Number of Training Epochs', type=int, default=100)
     # Active Learning Args
     parser.add_argument('--alg', help='acquisition algorithm, rand, conf, marg, badge, coreset', type=str, default='rand')
     parser.add_argument('--nQuery', help='number of points to query in a batch', type=int, default=100)
     parser.add_argument('--nStart', help='number of points to start', type=int, default=4500)
-    parser.add_argument('--nEnd', help='total number of points to query', type=int, default=5000)
+    parser.add_argument('--nEnd', help='total number of points to query', type=int, default=4600)
     # Method Args
     parser.add_argument('--method', help='which method to use: [none, mldgc]', type=str, default='none')
 

@@ -60,9 +60,9 @@ if __name__ == "__main__":
         strategy.update(labelled_mask)
 
         if args.method == "meta":
-            strategy.train_meta(labelled_mask, X_val, Y_val, P_val, verbose=False)
+            strategy.train_meta(labelled_mask, X_val, Y_val, P_val, verbose=True)
         elif args.method == "maml":
-            strategy.train_maml(labelled_mask, X_val, Y_val, P_val, verbose=False)
+            strategy.train_maml(labelled_mask, X_val, Y_val, P_val, verbose=True)
         # Normal ERM
         else:
             strategy.train(X_val, Y_val, P_val, verbose=False)
