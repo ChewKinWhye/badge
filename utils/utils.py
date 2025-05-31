@@ -11,19 +11,21 @@ def parse_args():
     # Data Args
     parser.add_argument('--data_dir', help='data path', type=str, default='/scratch/kinwhye/data')
     parser.add_argument('--dataset', help='dataset, mcdominoes, spuco, celeba, multinli, civilcomments', type=str, default='mcdominoes')
-    parser.add_argument("--spurious_strength", type=float, default=0.95, help="Strength of spurious correlation, only tunable for some datasets")
-    # Training Args
+    parser.add_argument("--spurious_strength", type=float, default=0.95, help="Strength of spurious correlation, only tunable for the mcdominoes and spuco datasets")
+    # Training Args: These parameters are not tuned and simply set to common default values, since hparam tuning is extremely expensive in an AL setup
     parser.add_argument('--lr', help='learning rate', type=float, default=1e-4)
     parser.add_argument('--weight_decay', help='weight decay', type=float, default=1e-4)
     parser.add_argument('--batch_size', help='batch size', type=int, default=32)
     parser.add_argument('--num_epochs', help='Number of Training Epochs', type=int, default=100)
     # Active Learning Args
-    parser.add_argument('--alg', help='acquisition algorithm, rand, conf, marg, badge, coreset', type=str, default='rand')
-    parser.add_argument('--nQuery', help='number of points to query in a batch', type=int, default=100)
+    parser.add_argument('--alg', help='acquisition algorithm, rand, conf, badge, coreset', type=str, default='rand')
     parser.add_argument('--nStart', help='number of points to start', type=int, default=4500)
+    parser.add_argument('--nQuery', help='number of points to query in a batch', type=int, default=100)
     parser.add_argument('--nEnd', help='total number of points to query', type=int, default=4600)
     # Method Args
-    parser.add_argument('--method', help='which method to use: [none, mldgc]', type=str, default='none')
+    parser.add_argument('--method', help='which method to use: [none, meta_reweight, meta_reweight_ANIL, maml, fomaml, ANIL]', type=str, default='none')
+    parser.add_argument('--inner_steps', help='Number of inner-loop adaptation steps', type=int, default=1)
+    parser.add_argument('--inner_lr', help='Learning rate of inner-loop adaptation', type=float, default=1e-2)
 
     # Random Seed
     parser.add_argument('--seed', help='random seed', type=int, default=0)

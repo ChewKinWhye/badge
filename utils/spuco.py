@@ -129,7 +129,7 @@ def get_dogs(data_dir, spurious_strength, split):
 
 
 def get_spuco(data_dir, spurious_strength, seed):
-    VAL_SIZE = 1000
+    VAL_SIZE = 2000
     TEST_SIZE = 2000
 
     save_dir = os.path.join(data_dir, f"spuco-{spurious_strength}-{seed}.pkl")

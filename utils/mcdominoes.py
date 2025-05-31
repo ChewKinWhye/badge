@@ -58,8 +58,7 @@ def format_mnist(imgs):
 
 
 def get_mcdominoes(data_dir, spurious_strength, seed):
-    VAL_SIZE = 1000
-    TEST_SIZE = 2000
+    VAL_SIZE = 10000
     save_dir = os.path.join(data_dir, f"mcdominoes-{spurious_strength}-{seed}.pkl")
     if os.path.exists(save_dir):
         print("Loading Dataset")
@@ -196,9 +195,9 @@ def get_mcdominoes(data_dir, spurious_strength, seed):
     cifar_test_input = cifar_test_input[rand_perm]
     cifar_test_target = cifar_test_target[rand_perm]
 
-    X_test = torch.cat((mnist_test_input, cifar_test_input), dim=2)[:TEST_SIZE]
-    P_test = np.array(mnist_test_target)[:TEST_SIZE]
-    Y_test = np.array(cifar_test_target)[:TEST_SIZE]
+    X_test = torch.cat((mnist_test_input, cifar_test_input), dim=2)
+    P_test = np.array(mnist_test_target)
+    Y_test = np.array(cifar_test_target)
 
     with open(save_dir, 'wb') as f:
         pickle.dump((X_train, Y_train, P_train, X_val, Y_val, P_val, X_test, Y_test, P_test), f)

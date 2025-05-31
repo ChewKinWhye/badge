@@ -17,16 +17,15 @@ if __name__ == "__main__":
     # Load Dataset (Numpy Array)
     X_tr, Y_tr, P_tr, X_val, Y_val, P_val, X_te, Y_te, P_te, num_classes, num_attributes, handler, target_resolution = get_data(args.dataset, args.data_dir, args.spurious_strength,
                                                args.seed)
-    if args.architecture == "ViT":
-        target_resolution = (224, 224)
+
+    # For these two datasets, all the minority groups have the same size. The evaluation should be done on all of them.
     if args.dataset in ["mcdominoes", "spuco"]:
-        # For these two datasets, all minority groups are the same size. The evaluation should be done on all the minority groups
         test_group = "minority"
+    # For the other datasets, some minority groups have smaller sizes than others. The evaluation should be done on the worst-group.
     else:
-        # For the other datasets, some minority groups have smaller sizes than others. The evaluation should be done on the worst group
         test_group = "worst"
 
-    # Initial labelled pool, Randomly select nStart indices to label
+    # Initial labelled pool, Randomly select nStart indices to label. labelled_mask is a boolean mask, where 1 indicates that the corresponding datapoint is labeled.
     labelled_mask = np.zeros(len(X_tr), dtype=np.int32)
     labelled_mask[np.random.choice(len(X_tr), args.nStart, replace=False)] = 1
 
@@ -59,10 +58,16 @@ if __name__ == "__main__":
         labelled_mask[query_idxs] = rd + 1
         strategy.update(labelled_mask)
 
-        if args.method == "meta":
-            strategy.train_meta(labelled_mask, X_val, Y_val, P_val, verbose=True)
+        if args.method == "meta_reweight":
+            strategy.train_meta_reweight(labelled_mask, X_val, Y_val, P_val, verbose=True)
+        elif args.method == "meta_reweight_ANIL":
+            strategy.train_reweight_ANIL(labelled_mask, X_val, Y_val, P_val, verbose=True)
         elif args.method == "maml":
             strategy.train_maml(labelled_mask, X_val, Y_val, P_val, verbose=True)
+        elif args.method == "fomaml":
+            strategy.train_fomaml(labelled_mask, X_val, Y_val, P_val, verbose=True)
+        elif args.method == "ANIL":
+            strategy.train_ANIL(labelled_mask, X_val, Y_val, P_val, verbose=True)
         # Normal ERM
         else:
             strategy.train(X_val, Y_val, P_val, verbose=False)
