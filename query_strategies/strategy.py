@@ -162,7 +162,7 @@ class Strategy:
                     param_group['lr'] = self.args.lr
                 logits = self.clf(x)
                 sample_loss = torch.nn.CrossEntropyLoss(reduction='none')(logits, y)
-                loss = torch.sum(sample_loss * sample_weights)
+                loss = torch.sum(sample_loss * sample_weights.detach())
                 loss += criterion(self.clf(x_meta), y_meta)
                 loss.backward()
                 optimizer.step()
@@ -260,7 +260,7 @@ class Strategy:
                 optimizer.zero_grad()
                 logits = self.clf(x)
                 sample_loss = torch.nn.CrossEntropyLoss(reduction='none')(logits, y)
-                loss = torch.sum(sample_loss * sample_weights)
+                loss = torch.sum(sample_loss * sample_weights.detach())
                 loss += criterion(self.clf(x_meta), y_meta)
                 loss.backward()
                 optimizer.step()
@@ -433,6 +433,7 @@ class Strategy:
                 # Obtain Meta-Gradients
                 optimizer.zero_grad()
                 x_meta, y_meta, p_meta, idxs_meta = next(loader_metatest)
+                x_meta, y_meta, p_meta, idxs_meta = x_meta.cuda(), y_meta.cuda(), p_meta.cuda(), idxs_meta.cuda()
                 logits_meta = self.clf(x_meta)
                 meta_loss = criterion(logits_meta, y_meta)
                 meta_grads = torch.autograd.grad(meta_loss, self.clf.parameters())
