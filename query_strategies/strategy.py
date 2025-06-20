@@ -137,10 +137,12 @@ class Strategy:
                 x, y, p, idxs = batch
                 x, y, p, idxs = x.cuda(), y.cuda(), p.cuda(), idxs.cuda()
                 sample_weights = dataset_weights[idxs]
+                sample_weights = sample_weights / torch.sum(sample_weights)
                 weight_optimizer.zero_grad()
                 optimizer.zero_grad()
                 for param_group in optimizer.param_groups:
                     param_group['lr'] = self.args.inner_lr
+                self.clf.eval()
                 with higher.innerloop_ctx(self.clf, optimizer, copy_initial_weights=False) as (fnet, diffopt):
                     for _ in range(self.args.inner_steps):
                         logits = fnet(x)
@@ -155,8 +157,10 @@ class Strategy:
                     weight_optimizer.zero_grad()
                     meta_loss.backward()
                 weight_optimizer.step()
-
+                with torch.no_grad():
+                    dataset_weights.clamp_(min=0.1)
                 # Outer-loop Optimizations
+                self.clf.train()
                 optimizer.zero_grad()
                 for param_group in optimizer.param_groups:
                     param_group['lr'] = self.args.lr
@@ -232,14 +236,15 @@ class Strategy:
                 x, y, p, idxs = batch
                 x, y, p, idxs = x.cuda(), y.cuda(), p.cuda(), idxs.cuda()
                 sample_weights = dataset_weights[idxs]
+                sample_weights = sample_weights / torch.sum(sample_weights)
                 weight_optimizer.zero_grad()
                 optimizer.zero_grad()
                 # Inner-loop Optimizations
-                optimizer.zero_grad()
                 if self.args.architecture == "BERT":
                     inner_optimizer = torch.optim.SGD(self.clf.model.classifier.parameters(), lr=self.args.inner_lr)
                 else:
                     inner_optimizer = torch.optim.SGD(self.clf.fc.parameters(), lr=self.args.inner_lr)
+                self.clf.eval()
 
                 with higher.innerloop_ctx(self.clf, inner_optimizer, copy_initial_weights=False) as (fnet, diffopt):
                     for _ in range(self.args.inner_steps):
@@ -255,9 +260,11 @@ class Strategy:
                     weight_optimizer.zero_grad()
                     meta_loss.backward()
                 weight_optimizer.step()
-
+                with torch.no_grad():
+                    dataset_weights.clamp_(min=0.1)
                 # Outer-loop Optimizations
                 optimizer.zero_grad()
+                self.clf.train()
                 logits = self.clf(x)
                 sample_loss = torch.nn.CrossEntropyLoss(reduction='none')(logits, y)
                 loss = torch.sum(sample_loss * sample_weights.detach())
@@ -332,6 +339,7 @@ class Strategy:
 
                 # Inner-loop Optimizations
                 optimizer.zero_grad()
+                self.clf.eval()
                 for param_group in optimizer.param_groups:
                     param_group['lr'] = self.args.inner_lr
                 with higher.innerloop_ctx(self.clf, optimizer, copy_initial_weights=False) as (fnet, diffopt):
@@ -348,6 +356,7 @@ class Strategy:
                     meta_loss.backward()
 
                 # Outer-loop Optimizations
+                self.clf.train()
                 for param_group in optimizer.param_groups:
                     param_group['lr'] = self.args.lr
                 logits = self.clf(x)
@@ -419,6 +428,7 @@ class Strategy:
                 x, y, p, idxs = x.cuda(), y.cuda(), p.cuda(), idxs.cuda()
                 # Save initial model
                 optimizer.zero_grad()
+                self.clf.eval()
                 state_dict_copy = copy.deepcopy(self.clf.state_dict())
                 optimizer_state_copy = copy.deepcopy(optimizer.state_dict())
 
@@ -429,7 +439,7 @@ class Strategy:
                     loss = criterion(logits, y)
                     loss.backward()
                     optimizer.step()
-
+                self.clf.train()
                 # Obtain Meta-Gradients
                 optimizer.zero_grad()
                 x_meta, y_meta, p_meta, idxs_meta = next(loader_metatest)
@@ -520,6 +530,7 @@ class Strategy:
                     inner_optimizer = torch.optim.SGD(self.clf.model.classifier.parameters(), lr=self.args.inner_lr)
                 else:
                     inner_optimizer = torch.optim.SGD(self.clf.fc.parameters(), lr=self.args.inner_lr)
+                self.clf.eval()
 
                 with higher.innerloop_ctx(self.clf, inner_optimizer, copy_initial_weights=False) as (fnet, diffopt):
                     for _ in range(self.args.inner_steps):
@@ -533,7 +544,7 @@ class Strategy:
                     meta_loss = criterion(logits_meta, y_meta)
                     optimizer.zero_grad()
                     meta_loss.backward()
-
+                self.clf.train()
                 # Outer-loop Optimizations
                 logits = self.clf(x)
                 loss = criterion(logits, y)
