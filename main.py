@@ -58,19 +58,8 @@ if __name__ == "__main__":
         labelled_mask[query_idxs] = rd + 1
         strategy.update(labelled_mask)
 
-        if args.method == "meta_reweight":
-            strategy.train_meta_reweight(labelled_mask, X_val, Y_val, P_val, verbose=True)
-        elif args.method == "meta_reweight_ANIL":
+        if args.method == "meta_reweight_ANIL":
             strategy.train_reweight_ANIL(labelled_mask, X_val, Y_val, P_val, verbose=True)
-        elif args.method == "maml":
-            strategy.train_maml(labelled_mask, X_val, Y_val, P_val, verbose=True)
-        elif args.method == "fomaml":
-            strategy.train_fomaml(labelled_mask, X_val, Y_val, P_val, verbose=True)
-        elif args.method == "ANIL":
-            strategy.train_ANIL(labelled_mask, X_val, Y_val, P_val, verbose=True)
-        # Normal ERM
-        else:
-            strategy.train(X_val, Y_val, P_val, verbose=False)
 
         test_average_acc[rd], test_minority_acc[rd], test_majority_acc[rd] = strategy.evaluate_model(loader_test)
         # Print and Clean up

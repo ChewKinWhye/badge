@@ -202,9 +202,6 @@ class Strategy:
 
 
     def train_reweight_ANIL(self, labelled_mask, X_val, Y_val, P_val, verbose=True):
-        # Initialize model and optimizer
-        self.clf = get_model(self.args.pretrained, self.args.architecture, self.num_classes)
-        self.clf = self.clf.cuda()
         optimizer = optim.Adam(self.clf.parameters(), lr=self.args.lr, weight_decay=self.args.weight_decay)
 
         # Obtain train and validation dataset and loader
@@ -225,13 +222,10 @@ class Strategy:
         criterion = torch.nn.CrossEntropyLoss()
 
         # --- Train Start ---
-        best_val_min_acc, best_epoch = -1, None
-
+        # We want to run this such that it is enough to learn the sample weights
         for epoch in range(self.num_epochs):
-            self.clf.train()
-            # Track metrics
-            ce_loss_meter, train_group_acc = AverageMeter(), AverageGroupMeter(self.num_classes, self.num_attributes)
-            start = time.time()
+            # Do not want to update the BN statistics
+            self.clf.eval()
             for batch in tqdm.tqdm(loader_metatrain, disable=True):
                 x, y, p, idxs = batch
                 x, y, p, idxs = x.cuda(), y.cuda(), p.cuda(), idxs.cuda()
@@ -262,15 +256,43 @@ class Strategy:
                 weight_optimizer.step()
                 with torch.no_grad():
                     dataset_weights.clamp_(min=0.1)
-                # Outer-loop Optimizations
+
+            # Print learned dataset weights
+            print(f"Epoch {epoch}")
+            print(f"Average Minority Weight: {torch.mean(dataset_weights[self.Y[idxs_metatrain]!=self.P[idxs_metatrain]])}")
+            print(f"Average Majority Weight: {torch.mean(dataset_weights[self.Y[idxs_metatrain]==self.P[idxs_metatrain]])}")
+
+        # Now we simply use these learned sample weights to train the model
+        # Initialize model and optimizer
+        self.clf = get_model(self.args.pretrained, self.args.architecture, self.num_classes)
+        self.clf = self.clf.cuda()
+        optimizer = optim.Adam(self.clf.parameters(), lr=self.args.lr, weight_decay=self.args.weight_decay)
+        criterion = torch.nn.CrossEntropyLoss()
+
+        # --- Train Start ---
+        best_val_min_acc, best_epoch = -1, None
+
+        for epoch in range(self.num_epochs):
+            self.clf.train()
+            # Track metrics
+            ce_loss_meter, train_group_acc = AverageMeter(), AverageGroupMeter(self.num_classes, self.num_attributes)
+            start = time.time()
+            for batch in tqdm.tqdm(loader_metatrain, disable=True):
+                x, y, p, idxs = batch
+                x, y, p, idxs = x.cuda(), y.cuda(), p.cuda(), idxs.cuda()
+                sample_weights = dataset_weights[idxs]
+                sample_weights = sample_weights / torch.sum(sample_weights)
                 optimizer.zero_grad()
-                self.clf.train()
                 logits = self.clf(x)
                 sample_loss = torch.nn.CrossEntropyLoss(reduction='none')(logits, y)
                 loss = torch.sum(sample_loss * sample_weights.detach())
                 loss += criterion(self.clf(x_meta), y_meta)
                 loss.backward()
+                torch.nn.utils.clip_grad_norm_(self.clf.parameters(), 1.0)
                 optimizer.step()
+                # Monitor training stats
+                ce_loss_meter.update(torch.mean(loss).detach().item(), x.size(0))
+                train_group_acc.update(logits.detach(), y, p)
 
             # Meta Evaluation, evaluate after updating on train dataset
             self.clf.eval()
@@ -290,8 +312,6 @@ class Strategy:
                     f"Train Minority/Worst Accuracy: {train_minority_acc:.3f}")
                 print(f"Val Average Accuracy: {val_avg_acc:.3f} Val Majority/Best Accuracy: {val_majority_acc:.3f} "
                       f"Val Minority/Worst Accuracy: {val_minority_acc:.3f}")
-                print(f"Average Minority Weight: {torch.mean(dataset_weights[self.Y[idxs_metatrain]!=self.P[idxs_metatrain]])}")
-                print(f"Average Majority Weight: {torch.mean(dataset_weights[self.Y[idxs_metatrain]==self.P[idxs_metatrain]])}")
 
         # --- Train End ---
         print(f'Best validation accuracy: {best_val_min_acc:.3f} at epoch {best_epoch}')
