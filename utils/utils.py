@@ -16,7 +16,7 @@ def parse_args():
     parser.add_argument('--lr', help='learning rate', type=float, default=1e-4)
     parser.add_argument('--weight_decay', help='weight decay', type=float, default=1e-4)
     parser.add_argument('--batch_size', help='batch size', type=int, default=32)
-    parser.add_argument('--num_epochs', help='Number of Training Epochs', type=int, default=100)
+    parser.add_argument('--num_epochs', help='Number of Training Epochs', type=int, default=3)
     # Active Learning Args
     parser.add_argument('--alg', help='acquisition algorithm, rand, conf, badge, coreset', type=str, default='rand')
     parser.add_argument('--nStart', help='number of points to start', type=int, default=4500)

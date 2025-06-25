@@ -212,17 +212,17 @@ class Strategy:
                                batch_size=self.args.batch_size, shuffle=True)
         dataset_weights = torch.nn.Parameter(torch.ones(len(idxs_metatrain)).cuda(), requires_grad=True)
         weight_optimizer = optim.Adam([dataset_weights], lr=0.1)
+        loader_metatest_base = DataLoader(self.handler([self.X[i] for i in idxs_metatest], torch.Tensor(self.Y[idxs_metatest]).long(), torch.Tensor(self.P[idxs_metatest]).long(), isTrain=True, target_resolution=self.target_resolution),
+                               batch_size=self.args.batch_size, shuffle=True)
 
-        loader_metatest = infinite_dataloader(DataLoader(self.handler([self.X[i] for i in idxs_metatest], torch.Tensor(self.Y[idxs_metatest]).long(), torch.Tensor(self.P[idxs_metatest]).long(), isTrain=True, target_resolution=self.target_resolution),
-                               batch_size=self.args.batch_size, shuffle=True))
+        loader_metatest = infinite_dataloader(loader_metatest_base)
 
         loader_val = DataLoader(self.handler(X_val, torch.Tensor(Y_val).long(), torch.Tensor(P_val).long(), isTrain=False, target_resolution=self.target_resolution),
                                shuffle=False, batch_size=self.args.batch_size)
 
         criterion = torch.nn.CrossEntropyLoss()
 
-        # --- Train Start ---
-        # We want to run this such that it is enough to learn the sample weights
+        # --- Meta-Train Start ---
         for epoch in range(self.num_epochs):
             # Do not want to update the BN statistics
             self.clf.eval()
@@ -254,6 +254,7 @@ class Strategy:
                     weight_optimizer.zero_grad()
                     meta_loss.backward()
                 weight_optimizer.step()
+                print(f"Gradient: {torch.mean(dataset_weights[idxs].grad)}")
                 with torch.no_grad():
                     dataset_weights.clamp_(min=0.1)
             with torch.no_grad():
@@ -269,7 +270,8 @@ class Strategy:
         self.clf = self.clf.cuda()
         optimizer = optim.Adam(self.clf.parameters(), lr=self.args.lr, weight_decay=self.args.weight_decay)
         criterion = torch.nn.CrossEntropyLoss()
-        sample_weights = torch.tensor([dataset_weights.detach().cpu().tolist()] + [1]*len(loader_metatest.dataset))
+        '''
+        sample_weights = torch.tensor(dataset_weights.detach().cpu().tolist() + [1]*len(loader_metatest_base.dataset))
         sampler = WeightedRandomSampler(weights=sample_weights,
                                         num_samples=len(sample_weights),  # or any number of samples per epoch
                                         replacement=True)
@@ -277,6 +279,18 @@ class Strategy:
         loader_tr = DataLoader(self.handler([self.X[i] for i in idxs_metatrain]+[self.X[i] for i in idxs_metatest],
                                             torch.Tensor(np.concatenate([self.Y[idxs_metatrain], self.Y[idxs_metatest]], axis=0)).long(),
                                             torch.Tensor(np.concatenate([self.P[idxs_metatrain], self.P[idxs_metatest]], axis=0)).long(),
+                                            isTrain=True, target_resolution=self.target_resolution),
+                               batch_size=self.args.batch_size, sampler=sampler)
+        '''
+        # Train without meta_test
+        sample_weights = torch.tensor(dataset_weights.detach().cpu().tolist())
+        sampler = WeightedRandomSampler(weights=sample_weights,
+                                        num_samples=len(sample_weights),  # or any number of samples per epoch
+                                        replacement=True)
+
+        loader_tr = DataLoader(self.handler([self.X[i] for i in idxs_metatrain],
+                                            torch.Tensor(self.Y[idxs_metatrain]).long(),
+                                            torch.Tensor(self.P[idxs_metatrain]).long(),
                                             isTrain=True, target_resolution=self.target_resolution),
                                batch_size=self.args.batch_size, sampler=sampler)
         # --- Train Start ---
