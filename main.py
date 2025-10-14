@@ -60,10 +60,8 @@ if __name__ == "__main__":
         strategy.update(labelled_mask)
 
         # Draw Conclusions: Gain additional information
-        if args.method == "mldg":
-            strategy.train_MAML(labelled_mask, X_val, Y_val, P_val, verbose=False)
         if args.method == "mldgc":
-            strategy.train_MAML_cumulative(labelled_mask, X_val, Y_val, P_val, verbose=False)
+            strategy.train_MAML_cumulative(labelled_mask, X_val, Y_val, P_val, verbose=True)
         elif args.method == "smldg":
             strategy.train_MAML_sequential(labelled_mask, X_val, Y_val, P_val, verbose=False)
         elif args.method == "smldgs":
@@ -71,7 +69,7 @@ if __name__ == "__main__":
 
         # Normal ERM
         else:
-            strategy.train(X_val, Y_val, P_val, verbose=False)
+            strategy.train(X_val, Y_val, P_val, verbose=True)
 
         test_average_acc[rd], test_minority_acc[rd], test_majority_acc[rd] = strategy.evaluate_model(loader_test)
         # Print and Clean up
