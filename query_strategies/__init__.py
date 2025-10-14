@@ -6,3 +6,4 @@ from .core_set import CoreSet
 from .active_learning_by_learning import ActiveLearningByLearning
 from .badge_sampling  import BadgeSampling
 from .bait_sampling  import BaitSampling
+from .loss_prediction import LossSampling

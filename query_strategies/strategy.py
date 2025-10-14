@@ -3,7 +3,7 @@ from torch.autograd import Variable
 from utils.utils import AverageMeter, get_output, AverageGroupMeter, infinite_dataloader
 import time
 import tqdm
-from utils.model import get_model
+from utils.model import get_model, ModelEMA
 import torch.nn.functional as F
 import torch.optim as optim
 import numpy as np
@@ -27,9 +27,9 @@ class Strategy:
         self.test_group = test_group
         self.args = args
         self.n_pool = len(Y)
-        self.clf = get_model(self.args.pretrained, self.args.architecture, self.num_classes)
+        self.clf = get_model(self.args.pretrained, self.args.architecture, self.num_classes, self.args.dropout)
         self.clf = self.clf.cuda()
-
+        self.ema_clf = ModelEMA(self.clf, decay=self.args.EMA_decay)
     def query(self, n):
         pass
 
@@ -38,10 +38,14 @@ class Strategy:
 
     def train(self, X_val, Y_val, P_val, state_dict=None, verbose=True):
         # Initialize model and optimizer
-        self.clf = get_model(self.args.pretrained, self.args.architecture, self.num_classes)
+        self.clf = get_model(self.args.pretrained, self.args.architecture, self.num_classes, self.args.dropout)
         self.clf = self.clf.cuda()
+        self.ema_clf = ModelEMA(self.clf, decay=self.args.EMA_decay)
+
         if state_dict is not None:
             self.clf.load_state_dict(state_dict)
+            self.ema_clf = ModelEMA(self.clf, decay=self.args.EMA_decay)
+
         if self.args.architecture == "BERT":
             optimizer = optim.AdamW(self.clf.parameters(), lr=self.args.lr, weight_decay=self.args.weight_decay)
         else:
@@ -77,23 +81,29 @@ class Strategy:
                 optimizer.zero_grad()
 
                 # Cross Entropy Loss
-                logits = self.clf(x)
-                loss = criterion(logits, y)
+                if self.args.method == "LPL":
+                    e1, e2, e3, e4, logits = self.resnet_embedding_forward(x)
+                    loss = criterion(logits, y)
+                    predicted_loss = self.predict_loss(e1, e2, e3, e4)
+                    LPL_loss = self.LPL_training_loss(predicted_loss, loss.detach())
+                    loss = loss + LPL_loss
+                else:
+                    logits = self.clf(x)
+                    loss = criterion(logits, y)
 
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(self.clf.parameters(), 1.0)
                 optimizer.step()
-
+                self.ema_clf.update(self.clf)
                 # Monitor training stats
                 ce_loss_meter.update(torch.mean(loss).detach().item(), x.size(0))
                 group_acc.update(logits.detach(), y, p)
             train_avg_acc, train_minority_acc, train_majority_acc = group_acc.get_stats(self.test_group)
 
-            self.clf.eval()
-            val_avg_acc, val_minority_acc, val_majority_acc = self.evaluate_model(loader_val)
+            val_avg_acc, val_minority_acc, val_majority_acc = self.evaluate_model(loader_val, self.ema_clf.ema)
             # Save best model based on worst group accuracy
             if val_minority_acc > best_val_min_acc:
-                torch.save(self.clf.state_dict(), os.path.join(self.args.save_dir, "ckpt.pt"))
+                torch.save(self.ema_clf.ema.state_dict(), os.path.join(self.args.save_dir, "ckpt.pt"))
                 best_val_min_acc = val_minority_acc
                 best_epoch = epoch
             # Print stats
@@ -106,15 +116,17 @@ class Strategy:
         # --- Train End ---
         print(f'Best validation minority accuracy: {best_val_min_acc:.3f} at epoch {best_epoch}')
         state_dict = torch.load(os.path.join(self.args.save_dir, "ckpt.pt"))
-        self.clf = get_model(self.args.pretrained, self.args.architecture, self.num_classes)
+        self.clf = get_model(self.args.pretrained, self.args.architecture, self.num_classes, self.args.dropout)
         self.clf = self.clf.cuda()
         self.clf.load_state_dict(state_dict)
         return state_dict
 
     def train_MAML_cumulative(self, labelled_mask, X_val, Y_val, P_val, verbose=True):
         # Initialize model and optimizer
-        self.clf = get_model(self.args.pretrained, self.args.architecture, self.num_classes)
+        self.clf = get_model(self.args.pretrained, self.args.architecture, self.num_classes, self.args.dropout)
         self.clf = self.clf.cuda()
+        self.ema_clf = ModelEMA(self.clf, decay=self.args.EMA_decay)
+
         optimizer = optim.Adam(self.clf.parameters(), lr=self.args.lr, weight_decay=self.args.weight_decay)
 
         # Obtain train and validation dataset and loader
@@ -220,20 +232,19 @@ class Strategy:
                 torch.nn.utils.clip_grad_norm_(self.clf.parameters(), 1.0)
 
                 optimizer.step()
+                self.ema_clf.update(self.clf)
 
                 train_group_acc.update(logits.detach(), y, p)
                 # Monitor training stats
                 ce_loss_meter.update(loss_total)
 
             # Meta Evaluation, evaluate after updating on train dataset
-            self.clf.eval()
-
             train_avg_acc, train_minority_acc, train_majority_acc = train_group_acc.get_stats(self.test_group)
-            val_avg_acc, val_minority_acc, val_majority_acc = self.evaluate_model(loader_val)
+            val_avg_acc, val_minority_acc, val_majority_acc = self.evaluate_model(loader_val, self.ema_clf.ema)
 
             # Save best model based on worst group accuracy
             if val_minority_acc > best_val_min_acc:
-                torch.save(self.clf.state_dict(), os.path.join(self.args.save_dir, "ckpt.pt"))
+                torch.save(self.ema_clf.ema.state_dict(), os.path.join(self.args.save_dir, "ckpt.pt"))
                 best_val_min_acc = val_minority_acc
                 best_epoch = epoch
             # Print stats
@@ -247,14 +258,14 @@ class Strategy:
         # --- Train End ---
         print(f'Best validation accuracy: {best_val_min_acc:.3f} at epoch {best_epoch}')
         state_dict = torch.load(os.path.join(self.args.save_dir, "ckpt.pt"))
-        self.clf = get_model(self.args.pretrained, self.args.architecture, self.num_classes)
+        self.clf = get_model(self.args.pretrained, self.args.architecture, self.num_classes, self.args.dropout)
         self.clf = self.clf.cuda()
         self.clf.load_state_dict(state_dict)
         return state_dict
 
     def train_MAML_sequential(self, labelled_mask, X_val, Y_val, P_val, verbose=True):
         # Initialize model and optimizer
-        self.clf = get_model(self.args.pretrained, self.args.architecture, self.num_classes)
+        self.clf = get_model(self.args.pretrained, self.args.architecture, self.num_classes, self.args.dropout)
         self.clf = self.clf.cuda()
         optimizer = optim.Adam(self.clf.parameters(), lr=self.args.lr, weight_decay=self.args.weight_decay)
 
@@ -315,14 +326,14 @@ class Strategy:
         # --- Train End ---
         print(f'Best validation accuracy: {best_val_min_acc:.3f} at epoch {best_epoch}')
         state_dict = torch.load(os.path.join(self.args.save_dir, "ckpt.pt"))
-        self.clf = get_model(self.args.pretrained, self.args.architecture, self.num_classes)
+        self.clf = get_model(self.args.pretrained, self.args.architecture, self.num_classes, self.args.dropout)
         self.clf = self.clf.cuda()
         self.clf.load_state_dict(state_dict)
         return state_dict
 
     def train_MAML_sequential_step(self, labelled_mask, X_val, Y_val, P_val, verbose=True):
         # Initialize model and optimizer
-        self.clf = get_model(self.args.pretrained, self.args.architecture, self.num_classes)
+        self.clf = get_model(self.args.pretrained, self.args.architecture, self.num_classes, self.args.dropout)
         self.clf = self.clf.cuda()
         optimizer = optim.Adam(self.clf.parameters(), lr=self.args.lr, weight_decay=self.args.weight_decay)
 
@@ -391,7 +402,7 @@ class Strategy:
         # --- Train End ---
         print(f'Best validation accuracy: {best_val_min_acc:.3f} at epoch {best_epoch}')
         state_dict = torch.load(os.path.join(self.args.save_dir, "ckpt.pt"))
-        self.clf = get_model(self.args.pretrained, self.args.architecture, self.num_classes)
+        self.clf = get_model(self.args.pretrained, self.args.architecture, self.num_classes, self.args.dropout)
         self.clf = self.clf.cuda()
         self.clf.load_state_dict(state_dict)
         return state_dict
@@ -408,7 +419,6 @@ class Strategy:
                 logits = model(x)
                 group_acc.update(logits.detach(), y, p)
         avg_acc, minority_acc, majority_acc = group_acc.get_stats(self.test_group)
-        model.train()
         return avg_acc, minority_acc, majority_acc
 
     def predict(self, X, Y):
@@ -444,3 +454,18 @@ class Strategy:
                 probs[idxs] = p.cpu().data
                 embedding[idxs] = emb.data.cpu()
         return probs, embedding
+
+    def resnet_embedding_forward(self, x):
+        x = self.clf.conv1(x)
+        x = self.clf.bn1(x)
+        x = self.clf.relu(x)
+        x = self.clf.maxpool(x)
+        e1 = self.clf.layer1(x)
+        e2 = self.clf.layer2(e1)
+        e3 = self.clf.layer3(e2)
+        e4 = self.clf.layer4(e3)
+        features = self.clf.avgpool(e4)
+        features = torch.flatten(features, 1)
+        # Classification Head
+        preds = self.clf.fc(features)
+        return e1, e2, e3, e4, preds

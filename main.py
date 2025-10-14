@@ -1,4 +1,4 @@
-from query_strategies import RandomSampling, BadgeSampling, LeastConfidence, MarginSampling, EntropySampling, CoreSet
+from query_strategies import RandomSampling, BadgeSampling, LeastConfidence, MarginSampling, EntropySampling, CoreSet, LossSampling
 from utils.dataset import get_data
 from utils.utils import parse_args, set_seed
 from torch.utils.data import DataLoader
@@ -39,6 +39,8 @@ if __name__ == "__main__":
         strategy = BadgeSampling(X_tr, Y_tr, P_tr, labelled_mask.astype(bool), handler, num_classes, num_attributes, args.num_epochs, target_resolution, test_group, args)
     elif args.alg == 'coreset': # coreset sampling
         strategy = CoreSet(X_tr, Y_tr, P_tr, labelled_mask.astype(bool), handler, num_classes, num_attributes, args.num_epochs, target_resolution, test_group, args)
+    elif args.alg == 'LPL':
+        strategy = LossSampling(X_tr, Y_tr, P_tr, labelled_mask.astype(bool), handler, num_classes, num_attributes, args.num_epochs, target_resolution, test_group, args)
     else:
         print('Choose a valid acquisition function.')
         raise ValueError

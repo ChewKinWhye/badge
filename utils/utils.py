@@ -21,6 +21,9 @@ def parse_args():
     parser.add_argument('--weight_decay', help='weight decay', type=float, default=1e-2)
     parser.add_argument('--batch_size', help='batch size', type=int, default=32)
     parser.add_argument('--num_epochs', help='Number of Training Epochs', type=int, default=100)
+    parser.add_argument('--dropout', help='p-value of dropout', type=float, default=0.2)
+    parser.add_argument('--EMA_decay', help='Decay of EMA model', type=float, default=0.99)
+
     # Active Learning Args
     parser.add_argument('--alg', help='acquisition algorithm, rand, conf, marg, badge, coreset', type=str, default='rand')
     parser.add_argument('--nQuery', help='number of points to query in a batch', type=int, default=100)

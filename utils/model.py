@@ -1,6 +1,24 @@
 from torchvision.models import resnet18, ResNet18_Weights, resnet50, ResNet50_Weights, vit_b_16, ViT_B_16_Weights
-from transformers import BertModel, BertTokenizer, BertForSequenceClassification
+from transformers import AutoConfig, BertModel, BertTokenizer, BertForSequenceClassification
 import torch
+from copy import deepcopy
+
+class ModelEMA:
+    def __init__(self, model, decay=0.999):
+        self.ema = deepcopy(model).eval()
+        for p in self.ema.parameters():
+            p.requires_grad_(False)
+        self.decay = decay
+    @torch.no_grad()
+    def update(self, model):
+        d = self.decay
+        msd = model.state_dict()
+        for k, v in self.ema.state_dict().items():
+            if v.dtype.is_floating_point:          # params + fp buffers
+                v.mul_(d).add_(msd[k], alpha=1.0 - d)
+            else:                                   # int buffers (e.g., num_batches_tracked)
+                v.copy_(msd[k])
+
 
 def sigmoid(x):
     return 1/(1+torch.exp(-x))
@@ -17,7 +35,7 @@ class BertWrapper(torch.nn.Module):
             token_type_ids=x[:, :, 2]).logits
 
 
-def get_model(pretrained, model, num_classes):
+def get_model(pretrained, model, num_classes, dropout):
     weights = {"resnet18": ResNet18_Weights,
                "resnet50": ResNet50_Weights,
                "ViT": ViT_B_16_Weights,
@@ -29,10 +47,16 @@ def get_model(pretrained, model, num_classes):
 
     if model == 'resnet18':
         net = resnet18(weights=weights)
-        net.fc = torch.nn.Linear(net.fc.in_features, num_classes)
+        if dropout == 0:
+            net.fc = torch.nn.Linear(net.fc.in_features, num_classes)
+        else:
+            net.fc = torch.nn.Sequential(torch.nn.Dropout(p=dropout), torch.nn.Linear(torch.in_features, num_classes))
     elif model == 'resnet50':
         net = resnet50(weights=weights)
-        net.fc = torch.nn.Linear(net.fc.in_features, num_classes)
+        if dropout == 0:
+            net.fc = torch.nn.Linear(net.fc.in_features, num_classes)
+        else:
+            net.fc = torch.nn.Sequential(torch.nn.Dropout(p=dropout), torch.nn.Linear(torch.in_features, num_classes))
     elif model == "ViT":
         net = vit_b_16(weights=weights)
         net.heads[0] = torch.nn.Linear(net.heads[0].in_features, num_classes)
@@ -57,6 +81,8 @@ def get_model(pretrained, model, num_classes):
     elif model == "BERT":
         # Do not support non-pretrained BERT since it does not make sense
         net = BertWrapper(BertForSequenceClassification.from_pretrained("bert-base-uncased", num_labels=num_classes))
+        model.dropout.p = dropout  # the dropout used right before model.classifier
+
     else:
         print('choose a valid model - resnet18, resnet50, ViT, BERT', flush=True)
         raise ValueError
